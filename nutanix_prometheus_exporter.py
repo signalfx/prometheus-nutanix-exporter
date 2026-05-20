@@ -3608,7 +3608,7 @@ def ipmi_get_thermal(api_server,secret,username='ADMIN',api_requests_timeout_sec
         ))
         raise
 
-#todo: add get cpu and memory metrics from redfish
+
 def ipmi_get_cpu_utilization(api_server,secret,username='ADMIN',api_requests_timeout_seconds=30, api_requests_retries=5, api_sleep_seconds_between_retries=15,secure=False):
     """Retrieves data from the IPMI RedFisk REST API endpoint /Systems.
 

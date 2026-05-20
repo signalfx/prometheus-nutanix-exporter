@@ -65,3 +65,18 @@ docker run -d --name nutanix-exporter-1 -p 8000:8000 -e PRISM=192.168.0.10 -e PR
     ```
     If you end up having to use the Flux query language, you can easily visualize data/metrics in the InfluxDB bucket explorer then look at the flux syntax in the script editor and copy/paste that code in Grafana.
  1. Build your dashboard
+
+## Setting up a read-only authorization policy for a user group in Prism Central
+
+You will need a user with viewer privileges on Prism Central for this script to work.
+
+Here is an example of how to set this up:
+
+1. Create a new security group in Active Directory (AD)
+2. Add a new AD user to that group
+3. In PC, navigate to *"Admin Center"* using the App Switcher then *“IAM"*
+4. Your AD should already be defined in the *“IdP Configuration”*. If not, add it.
+5. In *“Authorization Policies”*, create a new policy and change its name to whatever you want
+6. Select the *“Prism Viewer”* role
+7. In *“Define Scope”*, select *“Full access: all entity types & instances"*
+8. In *“Identities”*, select your AD directory, then search for the group you created in step 1, then *“Save"*
