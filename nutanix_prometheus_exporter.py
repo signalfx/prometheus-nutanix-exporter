@@ -26,6 +26,7 @@
 #todo: find a way to process all metrics asymmetrically
 
 #region #*IMPORT
+
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import Counter
 from collections.abc import Iterable
@@ -286,10 +287,10 @@ class NutanixMetrics:
             stats_count += len(self.unique_pc_count_metrics)
             complete_stats_list['prism_central'].append(unique_pc_count_metrics)
             for key_string in self.unique_pc_count_metrics:
-                setattr(self, key_string, Gauge(key_string, key_string, ['entity']))
+                setattr(self, key_string, Gauge(key_string, key_string, ['cluster','host','prism_central']))
         if self.prism_central_metrics and not self.cluster_metrics:
             for key_string in self.shared_pc_cluster_count_metrics:
-                setattr(self, key_string, Gauge(key_string, key_string, ['entity']))
+                setattr(self, key_string, Gauge(key_string, key_string, ['cluster','host','prism_central']))
         #endregion #?prism_central
 
         #region #?clusters
@@ -327,15 +328,15 @@ class NutanixMetrics:
             for instance_type in ntnx_clustermgmt_instance_type_count:
                 complete_stats_list['clustermgmt'][instance_type].append(self.shared_cluster_host_count_metrics)
             for key_string in self.shared_cluster_host_count_metrics:
-                setattr(self, key_string, Gauge(key_string, key_string, ['entity']))
+                setattr(self, key_string, Gauge(key_string, key_string, ['cluster','host','prism_central']))
             stats_count += len(self.unique_cluster_count_metrics)
             complete_stats_list['clustermgmt']['cluster'].append(self.unique_cluster_count_metrics)
             for key_string in self.unique_cluster_count_metrics:
-                setattr(self, key_string, Gauge(key_string, key_string, ['entity']))
+                setattr(self, key_string, Gauge(key_string, key_string, ['cluster','host','prism_central']))
             #endregion count
 
             #other misc info based metrics
-            setattr(self, 'nutanix_cluster', Info('nutanix_cluster', 'Misc cluster information'))
+            setattr(self, 'nutanix_cluster', Gauge('nutanix_cluster', 'nutanix_cluster', ['entity','timezone','redundancy_factor']))
             stats_count += 1
             complete_stats_list['info'].update({'nutanix_cluster': []})
         #endregion #?clusters
@@ -546,9 +547,9 @@ class NutanixMetrics:
                     volumes_client = v4_init_api_client(module='ntnx_volumes_py_client', prism=self.prism, user=self.user, pwd=self.pwd, prism_secure=self.prism_secure)
                     # Optimized: Select only necessary fields to reduce payload size
                     volume_group_list = v4_get_all_entities(module=ntnx_volumes_py_client,client=volumes_client,function='list_volume_groups',limit=limit,module_entity_api='VolumeGroupsApi',select='extId,sharingStatus',endpoint_errors_dict=endpoint_errors,endpoint_name='Prism Central - Volume Groups')
-                    self.__dict__["nutanix_count_vg"].labels(entity=prism_central_hostname).set(len(volume_group_list))
-                    self.__dict__["nutanix_count_vg_shared"].labels(entity=prism_central_hostname).set(len([vg for vg in volume_group_list if getattr(vg, "sharing_status", None) == 'SHARED']))
-                    self.__dict__["nutanix_count_vg_not_shared"].labels(entity=prism_central_hostname).set(len([vg for vg in volume_group_list if getattr(vg, "sharing_status", None) == 'NOT_SHARED']))
+                    self.__dict__["nutanix_count_vg"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(volume_group_list))
+                    self.__dict__["nutanix_count_vg_shared"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([vg for vg in volume_group_list if getattr(vg, "sharing_status", None) == 'SHARED']))
+                    self.__dict__["nutanix_count_vg_not_shared"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([vg for vg in volume_group_list if getattr(vg, "sharing_status", None) == 'NOT_SHARED']))
                     endpoint_timings['Prism Central - Volume Groups'] = time.time() - _endpoint_start
                     register_endpoint('Prism Central - Volume Groups')
                 except Exception as e:
@@ -562,27 +563,27 @@ class NutanixMetrics:
             vmm_client = v4_init_api_client(module='ntnx_vmm_py_client', prism=self.prism, user=self.user, pwd=self.pwd, prism_secure=self.prism_secure)
             # Optimized: Select only necessary fields to reduce payload size
             vms_list = v4_get_all_entities(module=ntnx_vmm_py_client,client=vmm_client,function='list_vms',limit=limit,module_entity_api='VmApi',endpoint_errors_dict=endpoint_errors,endpoint_name='Prism Central - VMs')
-            self.__dict__["nutanix_count_vm"].labels(entity=prism_central_hostname).set(len(vms_list))
-            self.__dict__["nutanix_count_vm_on"].labels(entity=prism_central_hostname).set(len([vm for vm in vms_list if vm.power_state == 'ON']))
-            self.__dict__["nutanix_count_vm_off"].labels(entity=prism_central_hostname).set(len([vm for vm in vms_list if vm.power_state == 'OFF']))
-            self.__dict__["nutanix_count_vm_boot_legacy"].labels(entity=prism_central_hostname).set(len([vm for vm in vms_list if vm.boot_config.__class__.__name__ == 'LegacyBoot']))
-            self.__dict__["nutanix_count_vm_boot_uefi"].labels(entity=prism_central_hostname).set(len([vm for vm in vms_list if vm.boot_config.__class__.__name__ == 'UefiBoot']))
-            self.__dict__["nutanix_count_vm_gpus"].labels(entity=prism_central_hostname).set(len([vm for vm in vms_list if vm.gpus]))
-            self.__dict__["nutanix_count_vm_unprotected"].labels(entity=prism_central_hostname).set(len([vm for vm in vms_list if vm.protection_type == 'UNPROTECTED']))
-            self.__dict__["nutanix_count_vm_pd_protected"].labels(entity=prism_central_hostname).set(len([vm for vm in vms_list if vm.protection_type == 'PD_PROTECTED']))
-            self.__dict__["nutanix_count_vm_rule_protected"].labels(entity=prism_central_hostname).set(len([vm for vm in vms_list if vm.protection_type == 'RULE_PROTECTED']))
-            self.__dict__["nutanix_count_vcpu"].labels(entity=prism_central_hostname).set(sum([(vm.num_sockets * vm.num_cores_per_socket) for vm in vms_list]))
-            self.__dict__["nutanix_count_vram_mib"].labels(entity=prism_central_hostname).set(sum([(vm.memory_size_bytes / 1048576) for vm in vms_list]))
-            self.__dict__["nutanix_count_vdisk"].labels(entity=prism_central_hostname).set(sum(any(vdisk.backing_info.__class__.__name__ == 'VmDisk' for vdisk in vm.disks) for vm in vms_list if vm.disks))
-            self.__dict__["nutanix_count_vdisk_ide"].labels(entity=prism_central_hostname).set(sum(any((vdisk.backing_info.__class__.__name__ == 'VmDisk' and vdisk.disk_address.bus_type == 'IDE') for vdisk in vm.disks) for vm in vms_list if vm.disks))
-            self.__dict__["nutanix_count_vdisk_sata"].labels(entity=prism_central_hostname).set(sum(any((vdisk.backing_info.__class__.__name__ == 'VmDisk' and vdisk.disk_address.bus_type == 'SATA') for vdisk in vm.disks) for vm in vms_list if vm.disks))
-            self.__dict__["nutanix_count_vdisk_scsi"].labels(entity=prism_central_hostname).set(sum(any((vdisk.backing_info.__class__.__name__ == 'VmDisk' and vdisk.disk_address.bus_type == 'SCSI') for vdisk in vm.disks) for vm in vms_list if vm.disks))
-            self.__dict__["nutanix_count_vnic"].labels(entity=prism_central_hostname).set(sum([len(vm.nics) for vm in vms_list if vm.nics]))
+            self.__dict__["nutanix_count_vm"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(vms_list))
+            self.__dict__["nutanix_count_vm_on"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([vm for vm in vms_list if vm.power_state == 'ON']))
+            self.__dict__["nutanix_count_vm_off"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([vm for vm in vms_list if vm.power_state == 'OFF']))
+            self.__dict__["nutanix_count_vm_boot_legacy"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([vm for vm in vms_list if vm.boot_config.__class__.__name__ == 'LegacyBoot']))
+            self.__dict__["nutanix_count_vm_boot_uefi"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([vm for vm in vms_list if vm.boot_config.__class__.__name__ == 'UefiBoot']))
+            self.__dict__["nutanix_count_vm_gpus"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([vm for vm in vms_list if vm.gpus]))
+            self.__dict__["nutanix_count_vm_unprotected"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([vm for vm in vms_list if vm.protection_type == 'UNPROTECTED']))
+            self.__dict__["nutanix_count_vm_pd_protected"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([vm for vm in vms_list if vm.protection_type == 'PD_PROTECTED']))
+            self.__dict__["nutanix_count_vm_rule_protected"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([vm for vm in vms_list if vm.protection_type == 'RULE_PROTECTED']))
+            self.__dict__["nutanix_count_vcpu"].labels(prism_central=prism_central_hostname,cluster="",host="").set(sum([(vm.num_sockets * vm.num_cores_per_socket) for vm in vms_list]))
+            self.__dict__["nutanix_count_vram_mib"].labels(prism_central=prism_central_hostname,cluster="",host="").set(sum([(vm.memory_size_bytes / 1048576) for vm in vms_list]))
+            self.__dict__["nutanix_count_vdisk"].labels(prism_central=prism_central_hostname,cluster="",host="").set(sum(any(vdisk.backing_info.__class__.__name__ == 'VmDisk' for vdisk in vm.disks) for vm in vms_list if vm.disks))
+            self.__dict__["nutanix_count_vdisk_ide"].labels(prism_central=prism_central_hostname,cluster="",host="").set(sum(any((vdisk.backing_info.__class__.__name__ == 'VmDisk' and vdisk.disk_address.bus_type == 'IDE') for vdisk in vm.disks) for vm in vms_list if vm.disks))
+            self.__dict__["nutanix_count_vdisk_sata"].labels(prism_central=prism_central_hostname,cluster="",host="").set(sum(any((vdisk.backing_info.__class__.__name__ == 'VmDisk' and vdisk.disk_address.bus_type == 'SATA') for vdisk in vm.disks) for vm in vms_list if vm.disks))
+            self.__dict__["nutanix_count_vdisk_scsi"].labels(prism_central=prism_central_hostname,cluster="",host="").set(sum(any((vdisk.backing_info.__class__.__name__ == 'VmDisk' and vdisk.disk_address.bus_type == 'SCSI') for vdisk in vm.disks) for vm in vms_list if vm.disks))
+            self.__dict__["nutanix_count_vnic"].labels(prism_central=prism_central_hostname,cluster="",host="").set(sum([len(vm.nics) for vm in vms_list if vm.nics]))
             vms_with_ngt = [vm for vm in vms_list if vm.guest_tools]
-            self.__dict__["nutanix_count_ngt_installed"].labels(entity=prism_central_hostname).set(len([vm for vm in vms_with_ngt if vm.guest_tools.is_installed is True]))
-            self.__dict__["nutanix_count_ngt_enabled"].labels(entity=prism_central_hostname).set(len([vm for vm in vms_with_ngt if vm.guest_tools.is_enabled is True]))
-            self.__dict__["nutanix_count_ngt_reachable"].labels(entity=prism_central_hostname).set(len([vm for vm in vms_with_ngt if vm.guest_tools.is_reachable is True]))
-            self.__dict__["nutanix_count_ngt_vss_snapshot_capable"].labels(entity=prism_central_hostname).set(len([vm for vm in vms_with_ngt if vm.guest_tools.is_vss_snapshot_capable is True])),
+            self.__dict__["nutanix_count_ngt_installed"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([vm for vm in vms_with_ngt if vm.guest_tools.is_installed is True]))
+            self.__dict__["nutanix_count_ngt_enabled"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([vm for vm in vms_with_ngt if vm.guest_tools.is_enabled is True]))
+            self.__dict__["nutanix_count_ngt_reachable"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([vm for vm in vms_with_ngt if vm.guest_tools.is_reachable is True]))
+            self.__dict__["nutanix_count_ngt_vss_snapshot_capable"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([vm for vm in vms_with_ngt if vm.guest_tools.is_vss_snapshot_capable is True])),
             endpoint_timings['Prism Central - VMs'] = time.time() - _endpoint_start
             register_endpoint('Prism Central - VMs')
             #endregion vm
@@ -597,7 +598,7 @@ class NutanixMetrics:
             clustermgmt_client = v4_init_api_client(module='ntnx_clustermgmt_py_client', prism=self.prism, user=self.user, pwd=self.pwd, prism_secure=self.prism_secure)
             # Optimized: Select only necessary fields to reduce payload size
             host_list = v4_get_all_entities(module=ntnx_clustermgmt_py_client,client=clustermgmt_client,function='list_hosts',limit=limit,module_entity_api='ClustersApi',select='extId,hostName,cluster',endpoint_errors_dict=endpoint_errors,endpoint_name='Prism Central - Hosts')
-            self.__dict__["nutanix_count_node"].labels(entity=prism_central_hostname).set(len(host_list))
+            self.__dict__["nutanix_count_node"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(host_list))
             endpoint_timings['Prism Central - Hosts'] = time.time() - _endpoint_start
             register_endpoint('Prism Central - Hosts')
             #endregion host
@@ -608,11 +609,11 @@ class NutanixMetrics:
             clustermgmt_client = v4_init_api_client(module='ntnx_clustermgmt_py_client', prism=self.prism, user=self.user, pwd=self.pwd, prism_secure=self.prism_secure)
             # Optimized: Select only necessary fields to reduce payload size (includes name and clusterName for stats section)
             storage_container_list = v4_get_all_entities(module=ntnx_clustermgmt_py_client,client=clustermgmt_client,function='list_storage_containers',limit=limit,module_entity_api='StorageContainersApi',select='extId,name,isEncrypted,replicationFactor,clusterExtId,clusterName',endpoint_errors_dict=endpoint_errors,endpoint_name='Prism Central - Storage Containers')
-            self.__dict__["nutanix_count_storage_container"].labels(entity=prism_central_hostname).set(len(storage_container_list))
-            self.__dict__["nutanix_count_storage_container_encrypted"].labels(entity=prism_central_hostname).set(len([storage_container for storage_container in storage_container_list if storage_container.is_encrypted is True]))
-            self.__dict__["nutanix_count_storage_container_rf1"].labels(entity=prism_central_hostname).set(len([storage_container for storage_container in storage_container_list if storage_container.replication_factor == 1]))
-            self.__dict__["nutanix_count_storage_container_rf2"].labels(entity=prism_central_hostname).set(len([storage_container for storage_container in storage_container_list if storage_container.replication_factor == 2]))
-            self.__dict__["nutanix_count_storage_container_rf3"].labels(entity=prism_central_hostname).set(len([storage_container for storage_container in storage_container_list if storage_container.replication_factor == 3]))
+            self.__dict__["nutanix_count_storage_container"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(storage_container_list))
+            self.__dict__["nutanix_count_storage_container_encrypted"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([storage_container for storage_container in storage_container_list if storage_container.is_encrypted is True]))
+            self.__dict__["nutanix_count_storage_container_rf1"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([storage_container for storage_container in storage_container_list if storage_container.replication_factor == 1]))
+            self.__dict__["nutanix_count_storage_container_rf2"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([storage_container for storage_container in storage_container_list if storage_container.replication_factor == 2]))
+            self.__dict__["nutanix_count_storage_container_rf3"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([storage_container for storage_container in storage_container_list if storage_container.replication_factor == 3]))
             endpoint_timings['Prism Central - Storage Containers'] = time.time() - _endpoint_start
             register_endpoint('Prism Central - Storage Containers')
             #endregion storage_container
@@ -623,48 +624,48 @@ class NutanixMetrics:
             networking_client = v4_init_api_client(module='ntnx_networking_py_client', prism=self.prism, user=self.user, pwd=self.pwd, prism_secure=self.prism_secure)
 
             subnet_list = v4_get_all_subnets(client=networking_client,limit=limit)
-            self.__dict__["nutanix_count_subnet"].labels(entity=prism_central_hostname).set(len(subnet_list))
-            self.__dict__["nutanix_count_subnet_vlan"].labels(entity=prism_central_hostname).set(len([subnet for subnet in subnet_list if subnet.subnet_type == 'VLAN']))
-            self.__dict__["nutanix_count_subnet_vlan_basic"].labels(entity=prism_central_hostname).set(len([subnet for subnet in subnet_list if (subnet.is_advanced_networking is False) and (subnet.subnet_type == 'VLAN')]))
-            self.__dict__["nutanix_count_subnet_vlan_advanced"].labels(entity=prism_central_hostname).set(len([subnet for subnet in subnet_list if (subnet.is_advanced_networking is True) and (subnet.subnet_type == 'VLAN')]))
-            self.__dict__["nutanix_count_subnet_overlay"].labels(entity=prism_central_hostname).set(len([subnet for subnet in subnet_list if subnet.subnet_type == 'OVERLAY']))
-            self.__dict__["nutanix_count_subnet_external"].labels(entity=prism_central_hostname).set(len([subnet for subnet in subnet_list if subnet.is_external is True]))
+            self.__dict__["nutanix_count_subnet"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(subnet_list))
+            self.__dict__["nutanix_count_subnet_vlan"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([subnet for subnet in subnet_list if subnet.subnet_type == 'VLAN']))
+            self.__dict__["nutanix_count_subnet_vlan_basic"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([subnet for subnet in subnet_list if (subnet.is_advanced_networking is False) and (subnet.subnet_type == 'VLAN')]))
+            self.__dict__["nutanix_count_subnet_vlan_advanced"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([subnet for subnet in subnet_list if (subnet.is_advanced_networking is True) and (subnet.subnet_type == 'VLAN')]))
+            self.__dict__["nutanix_count_subnet_overlay"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([subnet for subnet in subnet_list if subnet.subnet_type == 'OVERLAY']))
+            self.__dict__["nutanix_count_subnet_external"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([subnet for subnet in subnet_list if subnet.is_external is True]))
 
             if self.networking_metrics:
                 # Optimized: Select only extId for count-only queries
                 vpc_list = v4_get_all_entities(module=ntnx_networking_py_client,client=networking_client,function='list_vpcs',limit=limit,module_entity_api='VpcsApi',select='extId',endpoint_errors_dict=endpoint_errors,endpoint_name='Prism Central - Networking')
-                self.__dict__["nutanix_count_vpc"].labels(entity=prism_central_hostname).set(len(vpc_list))
+                self.__dict__["nutanix_count_vpc"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(vpc_list))
 
                 bgp_session_list = v4_get_all_entities(module=ntnx_networking_py_client,client=networking_client,function='list_bgp_sessions',limit=limit,module_entity_api='BgpSessionsApi',select='extId',endpoint_errors_dict=endpoint_errors,endpoint_name='Prism Central - Networking')
-                self.__dict__["nutanix_count_bgp_session"].labels(entity=prism_central_hostname).set(len(bgp_session_list))
+                self.__dict__["nutanix_count_bgp_session"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(bgp_session_list))
 
                 gateway_list = v4_get_all_entities(module=ntnx_networking_py_client,client=networking_client,function='list_gateways',limit=limit,module_entity_api='GatewaysApi',select='extId',endpoint_errors_dict=endpoint_errors,endpoint_name='Prism Central - Networking')
-                self.__dict__["nutanix_count_gateway"].labels(entity=prism_central_hostname).set(len(gateway_list))
+                self.__dict__["nutanix_count_gateway"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(gateway_list))
 
                 layer2_stretch_list = v4_get_all_entities(module=ntnx_networking_py_client,client=networking_client,function='list_layer2_stretches',limit=limit,module_entity_api='Layer2StretchesApi',select='extId',endpoint_errors_dict=endpoint_errors,endpoint_name='Prism Central - Networking')
-                self.__dict__["nutanix_count_layer2_stretch"].labels(entity=prism_central_hostname).set(len(layer2_stretch_list))
+                self.__dict__["nutanix_count_layer2_stretch"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(layer2_stretch_list))
 
                 #! this is causing too much latency, so removing it for now
                 """ load_balancer_sessions_list = v4_get_all_entities(module=ntnx_networking_py_client,client=networking_client,function='list_load_balancer_sessions',limit=limit,module_entity_api='LoadBalancerSessionsApi')
-                self.__dict__["nutanix_count_load_balancer_session"].labels(entity=prism_central_hostname).set(len(load_balancer_sessions_list)) """
+                self.__dict__["nutanix_count_load_balancer_session"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(load_balancer_sessions_list)) """
 
                 traffic_mirrors_list = v4_get_all_entities(module=ntnx_networking_py_client,client=networking_client,function='list_traffic_mirrors',limit=limit,module_entity_api='TrafficMirrorsApi',select='extId',endpoint_errors_dict=endpoint_errors,endpoint_name='Prism Central - Networking')
-                self.__dict__["nutanix_count_traffic_mirror"].labels(entity=prism_central_hostname).set(len(traffic_mirrors_list))
+                self.__dict__["nutanix_count_traffic_mirror"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(traffic_mirrors_list))
 
                 network_controller_list = v4_get_all_entities(module=ntnx_networking_py_client,client=networking_client,function='list_network_controllers',limit=limit,module_entity_api='NetworkControllersApi',select='extId',endpoint_errors_dict=endpoint_errors,endpoint_name='Prism Central - Networking')
-                self.__dict__["nutanix_count_network_controller"].labels(entity=prism_central_hostname).set(len(network_controller_list))
+                self.__dict__["nutanix_count_network_controller"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(network_controller_list))
 
                 routing_policy_list = v4_get_all_entities(module=ntnx_networking_py_client,client=networking_client,function='list_routing_policies',limit=limit,module_entity_api='RoutingPoliciesApi',select='extId',endpoint_errors_dict=endpoint_errors,endpoint_name='Prism Central - Networking')
-                self.__dict__["nutanix_count_routing_policy"].labels(entity=prism_central_hostname).set(len(routing_policy_list))
+                self.__dict__["nutanix_count_routing_policy"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(routing_policy_list))
 
                 uplink_bond_list = v4_get_all_entities(module=ntnx_networking_py_client,client=networking_client,function='list_uplink_bonds',limit=limit,module_entity_api='UplinkBondsApi',select='extId',endpoint_errors_dict=endpoint_errors,endpoint_name='Prism Central - Networking')
-                self.__dict__["nutanix_count_uplink_bond"].labels(entity=prism_central_hostname).set(len(uplink_bond_list))
+                self.__dict__["nutanix_count_uplink_bond"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(uplink_bond_list))
 
                 virtual_switch_list = v4_get_all_entities(module=ntnx_networking_py_client,client=networking_client,function='list_virtual_switches',limit=limit,module_entity_api='VirtualSwitchesApi',select='extId',endpoint_errors_dict=endpoint_errors,endpoint_name='Prism Central - Networking')
-                self.__dict__["nutanix_count_virtual_switch"].labels(entity=prism_central_hostname).set(len(virtual_switch_list))
+                self.__dict__["nutanix_count_virtual_switch"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(virtual_switch_list))
 
                 vpn_connection_list = v4_get_all_entities(module=ntnx_networking_py_client,client=networking_client,function='list_vpn_connections',limit=limit,module_entity_api='VpnConnectionsApi',select='extId',endpoint_errors_dict=endpoint_errors,endpoint_name='Prism Central - Networking')
-                self.__dict__["nutanix_count_vpn_connection"].labels(entity=prism_central_hostname).set(len(vpn_connection_list))
+                self.__dict__["nutanix_count_vpn_connection"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(vpn_connection_list))
             endpoint_timings['Prism Central - Networking'] = time.time() - _endpoint_start
             register_endpoint('Prism Central - Networking')
             #endregion networking
@@ -677,10 +678,10 @@ class NutanixMetrics:
 
                 # Optimized: Select only extId for count-only queries
                 files_server_list = v4_get_all_entities(module=ntnx_files_py_client,client=files_client,function='list_file_servers',limit=limit,module_entity_api='FileServersApi',select='extId',endpoint_errors_dict=endpoint_errors,endpoint_name='Prism Central - Files')
-                self.__dict__["nutanix_count_files_server"].labels(entity=prism_central_hostname).set(len(files_server_list))
+                self.__dict__["nutanix_count_files_server"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(files_server_list))
 
                 unified_namespace_list = v4_get_all_entities(module=ntnx_files_py_client,client=files_client,function='list_unified_namespaces',limit=limit,module_entity_api='UnifiedNamespacesApi',select='extId',endpoint_errors_dict=endpoint_errors,endpoint_name='Prism Central - Files')
-                self.__dict__["nutanix_count_files_unified_namespace"].labels(entity=prism_central_hostname).set(len(unified_namespace_list))
+                self.__dict__["nutanix_count_files_unified_namespace"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(unified_namespace_list))
                 endpoint_timings['Prism Central - Files'] = time.time() - _endpoint_start
                 register_endpoint('Prism Central - Files')
             #endregion files
@@ -690,17 +691,17 @@ class NutanixMetrics:
                 objects_client = v4_init_api_client(module='ntnx_objects_py_client', prism=self.prism, user=self.user, pwd=self.pwd, prism_secure=self.prism_secure)
                 # Optimized: Select only extId for count-only queries
                 object_store_list = v4_get_all_entities(module=ntnx_objects_py_client,client=objects_client,function='list_objectstores',limit=limit,module_entity_api='ObjectStoresApi',select='extId')
-                self.__dict__["nutanix_count_objects_object_stores"].labels(entity=prism_central_hostname).set(len(object_store_list))
+                self.__dict__["nutanix_count_objects_object_stores"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(object_store_list))
             #endregion object
 
             #region categories
             prism_client = v4_init_api_client(module='ntnx_prism_py_client', prism=self.prism, user=self.user, pwd=self.pwd, prism_secure=self.prism_secure)
             category_list = v4_get_all_entities(module=ntnx_prism_py_client,client=prism_client,function='list_categories',limit=limit,module_entity_api='CategoriesApi',select='extId,key,type')
-            self.__dict__["nutanix_count_category"].labels(entity=prism_central_hostname).set(len(category_list))
-            self.__dict__["nutanix_count_category_system"].labels(entity=prism_central_hostname).set(len([category for category in category_list if category.type == 'SYSTEM']))
-            self.__dict__["nutanix_count_category_user"].labels(entity=prism_central_hostname).set(len([category for category in category_list if category.type == 'USER']))
-            self.__dict__["nutanix_count_category_internal"].labels(entity=prism_central_hostname).set(len([category for category in category_list if category.type == 'INTERNAL']))
-            self.__dict__["nutanix_count_category_key"].labels(entity=prism_central_hostname).set(len((Counter(category.key for category in category_list).keys())))
+            self.__dict__["nutanix_count_category"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(category_list))
+            self.__dict__["nutanix_count_category_system"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([category for category in category_list if category.type == 'SYSTEM']))
+            self.__dict__["nutanix_count_category_user"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([category for category in category_list if category.type == 'USER']))
+            self.__dict__["nutanix_count_category_internal"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([category for category in category_list if category.type == 'INTERNAL']))
+            self.__dict__["nutanix_count_category_key"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len((Counter(category.key for category in category_list).keys())))
             #endregion categories
 
             #region tasks
@@ -723,7 +724,7 @@ class NutanixMetrics:
                             task_count = tasks_api_instance.list_tasks(_limit=1, _select='status', _filter=task_filter).metadata.total_available_results
                         else:
                             task_count = tasks_api_instance.list_tasks(_limit=1, _select='status').metadata.total_available_results
-                        self.__dict__[metric_key].labels(entity=prism_central_hostname).set(task_count)
+                        self.__dict__[metric_key].labels(prism_central=prism_central_hostname,cluster="",host="").set(task_count)
                         # Store total count from the 'total' query (first query with no filter)
                         if task_type == 'total':
                             total_task_count = task_count
@@ -750,7 +751,7 @@ class NutanixMetrics:
                 for alert_type, alert_filter, metric_key in alert_queries:
                     try:
                         alert_count = alerts_api_instance.list_alerts(_limit=1, _select='isResolved,severity', _filter=alert_filter).metadata.total_available_results
-                        self.__dict__[metric_key].labels(entity=prism_central_hostname).set(alert_count)
+                        self.__dict__[metric_key].labels(prism_central=prism_central_hostname,cluster="",host="").set(alert_count)
                     except Exception as e:
                         print(f"{PrintColors.WARNING}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [WARNING] Error fetching alert count for {alert_type}: {e}{PrintColors.RESET}")
                     finally:
@@ -766,10 +767,10 @@ class NutanixMetrics:
             #region audit
             #! too slow to retrieve and causing rate limit issues
             """ audit_list = v4_get_all_entities(module=ntnx_monitoring_py_client,client=monitoring_client,function='list_audits',limit=limit,module_entity_api='AuditsApi',select='status')
-            self.__dict__["nutanix_count_monitoring_audit"].labels(entity=prism_central_hostname).set(len(audit_list))
-            self.__dict__["nutanix_count_monitoring_audit_succeeded"].labels(entity=prism_central_hostname).set(len([audit for audit in audit_list if audit.status == 'SUCEEDED']))
-            self.__dict__["nutanix_count_monitoring_audit_failed"].labels(entity=prism_central_hostname).set(len([audit for audit in audit_list if audit.status == 'FAILED']))
-            self.__dict__["nutanix_count_monitoring_audit_aborted"].labels(entity=prism_central_hostname).set(len([audit for audit in audit_list if audit.status == 'ABORTED'])) """
+            self.__dict__["nutanix_count_monitoring_audit"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(audit_list))
+            self.__dict__["nutanix_count_monitoring_audit_succeeded"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([audit for audit in audit_list if audit.status == 'SUCEEDED']))
+            self.__dict__["nutanix_count_monitoring_audit_failed"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([audit for audit in audit_list if audit.status == 'FAILED']))
+            self.__dict__["nutanix_count_monitoring_audit_aborted"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([audit for audit in audit_list if audit.status == 'ABORTED'])) """
             #endregion audit
 
             #endregion monitoring
@@ -787,25 +788,25 @@ class NutanixMetrics:
                 endpoint_errors['Protection Policies'] += 1
                 protection_policy_list = []
                 print(f"{PrintColors.WARNING}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [WARNING] Error fetching Protection Policies: {e}{PrintColors.RESET}")
-            self.__dict__["nutanix_count_protection_policy"].labels(entity=prism_central_hostname).set(len(protection_policy_list))
+            self.__dict__["nutanix_count_protection_policy"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(protection_policy_list))
             #! from now on we're dividing by 2 because in the API, a replication configuration between 2 locations is in fact a single configuration created by the user
-            self.__dict__["nutanix_count_protection_policy_schedule"].labels(entity=prism_central_hostname).set(sum([math.ceil(len(protection_policy.replication_configurations)/2) for protection_policy in protection_policy_list]))
-            self.__dict__["nutanix_count_protection_policy_schedule_crash_consistent"].labels(entity=prism_central_hostname).set(sum([math.ceil(len([configuration.schedule for configuration in protection_policy.replication_configurations if configuration.schedule.recovery_point_type == 'CRASH_CONSISTENT'])/2) for protection_policy in protection_policy_list]))
-            self.__dict__["nutanix_count_protection_policy_schedule_app_consistent"].labels(entity=prism_central_hostname).set(sum([math.ceil(len([configuration.schedule for configuration in protection_policy.replication_configurations if configuration.schedule.recovery_point_type == 'APPLICATION_CONSISTENT'])/2) for protection_policy in protection_policy_list]))
+            self.__dict__["nutanix_count_protection_policy_schedule"].labels(prism_central=prism_central_hostname,cluster="",host="").set(sum([math.ceil(len(protection_policy.replication_configurations)/2) for protection_policy in protection_policy_list]))
+            self.__dict__["nutanix_count_protection_policy_schedule_crash_consistent"].labels(prism_central=prism_central_hostname,cluster="",host="").set(sum([math.ceil(len([configuration.schedule for configuration in protection_policy.replication_configurations if configuration.schedule.recovery_point_type == 'CRASH_CONSISTENT'])/2) for protection_policy in protection_policy_list]))
+            self.__dict__["nutanix_count_protection_policy_schedule_app_consistent"].labels(prism_central=prism_central_hostname,cluster="",host="").set(sum([math.ceil(len([configuration.schedule for configuration in protection_policy.replication_configurations if configuration.schedule.recovery_point_type == 'APPLICATION_CONSISTENT'])/2) for protection_policy in protection_policy_list]))
             #? sync is where RPO = 0
-            self.__dict__["nutanix_count_protection_policy_schedule_sync"].labels(entity=prism_central_hostname).set(sum([math.ceil(len([configuration.schedule for configuration in protection_policy.replication_configurations if configuration.schedule.recovery_point_objective_time_seconds == 0])/2) for protection_policy in protection_policy_list]))
+            self.__dict__["nutanix_count_protection_policy_schedule_sync"].labels(prism_central=prism_central_hostname,cluster="",host="").set(sum([math.ceil(len([configuration.schedule for configuration in protection_policy.replication_configurations if configuration.schedule.recovery_point_objective_time_seconds == 0])/2) for protection_policy in protection_policy_list]))
             #? nearsync is where RPO > 0 but <= 900
-            self.__dict__["nutanix_count_protection_policy_schedule_nearsync"].labels(entity=prism_central_hostname).set(sum([math.ceil(len([configuration.schedule for configuration in protection_policy.replication_configurations if (configuration.schedule.recovery_point_objective_time_seconds > 0) and (configuration.schedule.recovery_point_objective_time_seconds <= 900)])/2) for protection_policy in protection_policy_list]))
+            self.__dict__["nutanix_count_protection_policy_schedule_nearsync"].labels(prism_central=prism_central_hostname,cluster="",host="").set(sum([math.ceil(len([configuration.schedule for configuration in protection_policy.replication_configurations if (configuration.schedule.recovery_point_objective_time_seconds > 0) and (configuration.schedule.recovery_point_objective_time_seconds <= 900)])/2) for protection_policy in protection_policy_list]))
             #? sync is where RPO > 900
-            self.__dict__["nutanix_count_protection_policy_schedule_async"].labels(entity=prism_central_hostname).set(sum([math.ceil(len([configuration.schedule for configuration in protection_policy.replication_configurations if configuration.schedule.recovery_point_objective_time_seconds > 900])/2) for protection_policy in protection_policy_list]))
+            self.__dict__["nutanix_count_protection_policy_schedule_async"].labels(prism_central=prism_central_hostname,cluster="",host="").set(sum([math.ceil(len([configuration.schedule for configuration in protection_policy.replication_configurations if configuration.schedule.recovery_point_objective_time_seconds > 900])/2) for protection_policy in protection_policy_list]))
 
             protection_policy_sync_ext_id_list = [protection_policy.ext_id for protection_policy in protection_policy_list if [configuration.schedule for configuration in protection_policy.replication_configurations if configuration.schedule.recovery_point_objective_time_seconds == 0]]
             protection_policy_nearsync_ext_id_list = [protection_policy.ext_id for protection_policy in protection_policy_list if [configuration.schedule for configuration in protection_policy.replication_configurations if configuration.schedule.recovery_point_objective_time_seconds > 0 and configuration.schedule.recovery_point_objective_time_seconds <= 900]]
             protection_policy_async_ext_id_list = [protection_policy.ext_id for protection_policy in protection_policy_list if [configuration.schedule for configuration in protection_policy.replication_configurations if configuration.schedule.recovery_point_objective_time_seconds > 900]]
             count_of_protected_vms_per_policy_ext_id = Counter([vm.protection_policy_state.policy.ext_id for vm in vms_list if vm.protection_policy_state])
-            self.__dict__["nutanix_count_dr_protected_entities_sync"].labels(entity=prism_central_hostname).set(sum([count_of_protected_vms_per_policy_ext_id[ext_id] for ext_id in protection_policy_sync_ext_id_list]))
-            self.__dict__["nutanix_count_dr_protected_entities_nearsync"].labels(entity=prism_central_hostname).set(sum([count_of_protected_vms_per_policy_ext_id[ext_id] for ext_id in protection_policy_nearsync_ext_id_list]))
-            self.__dict__["nutanix_count_dr_protected_entities_async"].labels(entity=prism_central_hostname).set(sum([count_of_protected_vms_per_policy_ext_id[ext_id] for ext_id in protection_policy_async_ext_id_list]))
+            self.__dict__["nutanix_count_dr_protected_entities_sync"].labels(prism_central=prism_central_hostname,cluster="",host="").set(sum([count_of_protected_vms_per_policy_ext_id[ext_id] for ext_id in protection_policy_sync_ext_id_list]))
+            self.__dict__["nutanix_count_dr_protected_entities_nearsync"].labels(prism_central=prism_central_hostname,cluster="",host="").set(sum([count_of_protected_vms_per_policy_ext_id[ext_id] for ext_id in protection_policy_nearsync_ext_id_list]))
+            self.__dict__["nutanix_count_dr_protected_entities_async"].labels(prism_central=prism_central_hostname,cluster="",host="").set(sum([count_of_protected_vms_per_policy_ext_id[ext_id] for ext_id in protection_policy_async_ext_id_list]))
             #endregion protection policies
 
             #region data protection
@@ -849,9 +850,9 @@ class NutanixMetrics:
                     print(error)
                 protected_resource_list = entity_list
                 #print([protected_resource.replication_states for protected_resource in protected_resource_list])
-                self.__dict__["nutanix_count_dr_protected_entities_status_in_sync"].labels(entity=prism_central_hostname).set(sum([len([replication_state for replication_state in protected_resource.replication_states if replication_state.replication_status == 'IN_SYNC']) for protected_resource in protected_resource_list if protected_resource.replication_states]))
-                self.__dict__["nutanix_count_dr_protected_entities_status_syncing"].labels(entity=prism_central_hostname).set(sum([len([replication_state for replication_state in protected_resource.replication_states if replication_state.replication_status == 'SYNCING']) for protected_resource in protected_resource_list if protected_resource.replication_states]))
-                self.__dict__["nutanix_count_dr_protected_entities_status_out_of_sync"].labels(entity=prism_central_hostname).set(sum([len([replication_state for replication_state in protected_resource.replication_states if replication_state.replication_status == 'OUT_OF_SYNC']) for protected_resource in protected_resource_list if protected_resource.replication_states])) """
+                self.__dict__["nutanix_count_dr_protected_entities_status_in_sync"].labels(prism_central=prism_central_hostname,cluster="",host="").set(sum([len([replication_state for replication_state in protected_resource.replication_states if replication_state.replication_status == 'IN_SYNC']) for protected_resource in protected_resource_list if protected_resource.replication_states]))
+                self.__dict__["nutanix_count_dr_protected_entities_status_syncing"].labels(prism_central=prism_central_hostname,cluster="",host="").set(sum([len([replication_state for replication_state in protected_resource.replication_states if replication_state.replication_status == 'SYNCING']) for protected_resource in protected_resource_list if protected_resource.replication_states]))
+                self.__dict__["nutanix_count_dr_protected_entities_status_out_of_sync"].labels(prism_central=prism_central_hostname,cluster="",host="").set(sum([len([replication_state for replication_state in protected_resource.replication_states if replication_state.replication_status == 'OUT_OF_SYNC']) for protected_resource in protected_resource_list if protected_resource.replication_states])) """
 
             dr_protected_entities_sync=0
             dr_protected_entities_nearsync=0
@@ -865,9 +866,9 @@ class NutanixMetrics:
                     dr_protected_entities_nearsync += 1
                 else:
                     dr_protected_entities_async += 1
-            self.__dict__["nutanix_count_dr_protected_entities_sync"].labels(entity=prism_central_hostname).set(dr_protected_entities_sync)
-            self.__dict__["nutanix_count_dr_protected_entities_nearsync"].labels(entity=prism_central_hostname).set(dr_protected_entities_nearsync)
-            self.__dict__["nutanix_count_dr_protected_entities_async"].labels(entity=prism_central_hostname).set(dr_protected_entities_async)
+            self.__dict__["nutanix_count_dr_protected_entities_sync"].labels(prism_central=prism_central_hostname,cluster="",host="").set(dr_protected_entities_sync)
+            self.__dict__["nutanix_count_dr_protected_entities_nearsync"].labels(prism_central=prism_central_hostname,cluster="",host="").set(dr_protected_entities_nearsync)
+            self.__dict__["nutanix_count_dr_protected_entities_async"].labels(prism_central=prism_central_hostname,cluster="",host="").set(dr_protected_entities_async)
 
 
             endpoint_errors['Recovery Points'] = 0
@@ -885,11 +886,11 @@ class NutanixMetrics:
                 #recovery_point_list = []
             endpoint_timings['Recovery Points'] = time.time() - _recovery_points_start
             register_endpoint('Recovery Points')
-            self.__dict__["nutanix_count_dr_recovery_points"].labels(entity=prism_central_hostname).set(recovery_point_count)
-            #self.__dict__["nutanix_count_dr_recovery_points_vm"].labels(entity=prism_central_hostname).set(sum([len([vm_recovery_point for vm_recovery_point in recovery_point.vm_recovery_points]) for recovery_point in recovery_point_list if recovery_point and recovery_point.vm_recovery_points]))
-            #self.__dict__["nutanix_count_dr_recovery_points_vg"].labels(entity=prism_central_hostname).set(sum([len([vg_recovery_point for vg_recovery_point in recovery_point.volume_group_recovery_points]) for recovery_point in recovery_point_list if recovery_point and recovery_point.volume_group_recovery_points]))
-            #self.__dict__["nutanix_count_dr_recovery_points_crash_consistent"].labels(entity=prism_central_hostname).set(len([recovery_point for recovery_point in recovery_point_list if recovery_point and recovery_point.recovery_point_type == 'CRASH_CONSISTENT']))
-            #self.__dict__["nutanix_count_dr_recovery_points_application_consistent"].labels(entity=prism_central_hostname).set(len([recovery_point for recovery_point in recovery_point_list if recovery_point and recovery_point.recovery_point_type == 'APPLICATION_CONSISTENT']))
+            self.__dict__["nutanix_count_dr_recovery_points"].labels(prism_central=prism_central_hostname,cluster="",host="").set(recovery_point_count)
+            #self.__dict__["nutanix_count_dr_recovery_points_vm"].labels(prism_central=prism_central_hostname,cluster="",host="").set(sum([len([vm_recovery_point for vm_recovery_point in recovery_point.vm_recovery_points]) for recovery_point in recovery_point_list if recovery_point and recovery_point.vm_recovery_points]))
+            #self.__dict__["nutanix_count_dr_recovery_points_vg"].labels(prism_central=prism_central_hostname,cluster="",host="").set(sum([len([vg_recovery_point for vg_recovery_point in recovery_point.volume_group_recovery_points]) for recovery_point in recovery_point_list if recovery_point and recovery_point.volume_group_recovery_points]))
+            #self.__dict__["nutanix_count_dr_recovery_points_crash_consistent"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([recovery_point for recovery_point in recovery_point_list if recovery_point and recovery_point.recovery_point_type == 'CRASH_CONSISTENT']))
+            #self.__dict__["nutanix_count_dr_recovery_points_application_consistent"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([recovery_point for recovery_point in recovery_point_list if recovery_point and recovery_point.recovery_point_type == 'APPLICATION_CONSISTENT']))
             #endregion data protection
 
             #region microseg
@@ -907,15 +908,15 @@ class NutanixMetrics:
                     endpoint_errors['Microseg - Network Security Policies'] += 1
                     network_security_policy_list = []
                     print(f"{PrintColors.WARNING}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [WARNING] Error fetching Network Security Policies: {e}{PrintColors.RESET}")
-                self.__dict__["nutanix_count_microseg_network_security_policy"].labels(entity=prism_central_hostname).set(len(network_security_policy_list))
-                self.__dict__["nutanix_count_microseg_network_security_policy_vlan"].labels(entity=prism_central_hostname).set(len([policy for policy in network_security_policy_list if policy.scope in ['ALL_VLAN']]))
-                self.__dict__["nutanix_count_microseg_network_security_policy_vpc"].labels(entity=prism_central_hostname).set(len([policy for policy in network_security_policy_list if policy.scope in ['ALL_VPC','VPC_LIST']]))
-                self.__dict__["nutanix_count_microseg_network_security_policy_save"].labels(entity=prism_central_hostname).set(len([policy for policy in network_security_policy_list if policy.state == 'SAVE']))
-                self.__dict__["nutanix_count_microseg_network_security_policy_monitor"].labels(entity=prism_central_hostname).set(len([policy for policy in network_security_policy_list if policy.state == 'MONITOR']))
-                self.__dict__["nutanix_count_microseg_network_security_policy_enforce"].labels(entity=prism_central_hostname).set(len([policy for policy in network_security_policy_list if policy.state == 'ENFORCE']))
-                self.__dict__["nutanix_count_microseg_network_security_policy_quarantine"].labels(entity=prism_central_hostname).set(len([policy for policy in network_security_policy_list if policy.type == 'QUARANTINE']))
-                self.__dict__["nutanix_count_microseg_network_security_policy_isolation"].labels(entity=prism_central_hostname).set(len([policy for policy in network_security_policy_list if policy.type == 'ISOLATION']))
-                self.__dict__["nutanix_count_microseg_network_security_policy_application"].labels(entity=prism_central_hostname).set(len([policy for policy in network_security_policy_list if policy.type == 'APPLICATION']))
+                self.__dict__["nutanix_count_microseg_network_security_policy"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(network_security_policy_list))
+                self.__dict__["nutanix_count_microseg_network_security_policy_vlan"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([policy for policy in network_security_policy_list if policy.scope in ['ALL_VLAN']]))
+                self.__dict__["nutanix_count_microseg_network_security_policy_vpc"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([policy for policy in network_security_policy_list if policy.scope in ['ALL_VPC','VPC_LIST']]))
+                self.__dict__["nutanix_count_microseg_network_security_policy_save"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([policy for policy in network_security_policy_list if policy.state == 'SAVE']))
+                self.__dict__["nutanix_count_microseg_network_security_policy_monitor"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([policy for policy in network_security_policy_list if policy.state == 'MONITOR']))
+                self.__dict__["nutanix_count_microseg_network_security_policy_enforce"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([policy for policy in network_security_policy_list if policy.state == 'ENFORCE']))
+                self.__dict__["nutanix_count_microseg_network_security_policy_quarantine"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([policy for policy in network_security_policy_list if policy.type == 'QUARANTINE']))
+                self.__dict__["nutanix_count_microseg_network_security_policy_isolation"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([policy for policy in network_security_policy_list if policy.type == 'ISOLATION']))
+                self.__dict__["nutanix_count_microseg_network_security_policy_application"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([policy for policy in network_security_policy_list if policy.type == 'APPLICATION']))
 
                 #! security policy rules can take minutes to retrieve if there are a lot of security policies
                 """ entity_list=[]
@@ -953,7 +954,7 @@ class NutanixMetrics:
                 for error in error_list:
                     print(error)
                 network_security_policy_rule_list = entity_list
-                self.__dict__["nutanix_count_microseg_network_security_policy_rule"].labels(entity=prism_central_hostname).set(len(network_security_policy_rule_list)) """
+                self.__dict__["nutanix_count_microseg_network_security_policy_rule"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(network_security_policy_rule_list)) """
                 
                 endpoint_errors['Microseg - Address Groups'] = 0
                 _endpoint_start = time.time()
@@ -966,7 +967,7 @@ class NutanixMetrics:
                     endpoint_errors['Microseg - Address Groups'] += 1
                     address_group_list = []
                     print(f"{PrintColors.WARNING}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [WARNING] Error fetching Address Groups: {e}{PrintColors.RESET}")
-                self.__dict__["nutanix_count_microseg_address_group"].labels(entity=prism_central_hostname).set(len(address_group_list))
+                self.__dict__["nutanix_count_microseg_address_group"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(address_group_list))
 
                 endpoint_errors['Microseg - Service Groups'] = 0
                 _endpoint_start = time.time()
@@ -979,7 +980,7 @@ class NutanixMetrics:
                     endpoint_errors['Microseg - Service Groups'] += 1
                     service_group_list = []
                     print(f"{PrintColors.WARNING}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [WARNING] Error fetching Service Groups: {e}{PrintColors.RESET}")
-                self.__dict__["nutanix_count_microseg_service_group"].labels(entity=prism_central_hostname).set(len(service_group_list))
+                self.__dict__["nutanix_count_microseg_service_group"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len(service_group_list))
             #endregion microseg
         #endregion #?prism_central
 
@@ -995,7 +996,7 @@ class NutanixMetrics:
             # Optimized: Select only necessary fields to reduce payload size
             cluster_list = v4_get_all_entities(module=ntnx_clustermgmt_py_client,client=clustermgmt_client,function='list_clusters',limit=limit,module_entity_api='ClustersApi',select='extId,name,config',endpoint_errors_dict=endpoint_errors,endpoint_name='Prism Central - Clusters')
             # Set cluster count metric
-            self.__dict__["nutanix_count_cluster"].labels(entity=prism_central_hostname).set(len([cluster for cluster in cluster_list if 'PRISM_CENTRAL' not in cluster.config.cluster_function]))
+            self.__dict__["nutanix_count_cluster"].labels(prism_central=prism_central_hostname,cluster="",host="").set(len([cluster for cluster in cluster_list if 'PRISM_CENTRAL' not in cluster.config.cluster_function]))
 
             #region stats
             #* get metrics for each cluster
@@ -1008,7 +1009,10 @@ class NutanixMetrics:
                 entity_details = {
                     'entity_name': entity.name,
                     'entity_uuid': entity.ext_id,
-                }
+                }                
+               
+                self.__dict__['nutanix_cluster'].labels(entity=entity.name,timezone=entity.config.timezone,redundancy_factor=str(entity.config.redundancy_factor)).set(1)
+                
                 cluster_details_list.append(entity_details)
             #print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [INFO] Processing {len(cluster_details_list)} entities...{PrintColors.RESET}")
             with tqdm.tqdm(total=len(cluster_details_list), desc=f"{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [DATA] Fetching cluster metrics") as progress_bar:
@@ -1060,7 +1064,7 @@ class NutanixMetrics:
                 volume_group_list = v4_get_all_entities(module=ntnx_volumes_py_client,client=volumes_client,function='list_volume_groups',limit=limit,module_entity_api='VolumeGroupsApi')
             for cluster in cluster_list:
                 if 'PRISM_CENTRAL' not in cluster.config.cluster_function:
-                    self.__dict__["nutanix_count_vg"].labels(entity=cluster.name).set(len([vg for vg in volume_group_list if getattr(vg, "cluster_reference", None) == cluster.ext_id]))
+                    self.__dict__["nutanix_count_vg"].labels(prism_central="",cluster=cluster.name,host="").set(len([vg for vg in volume_group_list if getattr(vg, "cluster_reference", None) == cluster.ext_id]))
             #endregion vg
 
             #region vm
@@ -1071,27 +1075,27 @@ class NutanixMetrics:
             for cluster in cluster_list:
                 if 'PRISM_CENTRAL' not in cluster.config.cluster_function:
                     cluster_vms_list= [vm for vm in vms_list if vm.cluster.ext_id == cluster.ext_id]
-                    self.__dict__["nutanix_count_vm"].labels(entity=cluster.name).set(len(cluster_vms_list))
-                    self.__dict__["nutanix_count_vm_on"].labels(entity=cluster.name).set(len([vm for vm in cluster_vms_list if vm.power_state == 'ON']))
-                    self.__dict__["nutanix_count_vm_off"].labels(entity=cluster.name).set(len([vm for vm in cluster_vms_list if vm.power_state == 'OFF']))
-                    self.__dict__["nutanix_count_vm_boot_legacy"].labels(entity=cluster.name).set(len([vm for vm in cluster_vms_list if vm.boot_config.__class__.__name__ == 'LegacyBoot']))
-                    self.__dict__["nutanix_count_vm_boot_uefi"].labels(entity=cluster.name).set(len([vm for vm in cluster_vms_list if vm.boot_config.__class__.__name__ == 'UefiBoot']))
-                    self.__dict__["nutanix_count_vm_gpus"].labels(entity=cluster.name).set(len([vm for vm in cluster_vms_list if vm.gpus]))
-                    self.__dict__["nutanix_count_vm_unprotected"].labels(entity=cluster.name).set(len([vm for vm in cluster_vms_list if vm.protection_type == 'UNPROTECTED']))
-                    self.__dict__["nutanix_count_vm_pd_protected"].labels(entity=cluster.name).set(len([vm for vm in cluster_vms_list if vm.protection_type == 'PD_PROTECTED']))
-                    self.__dict__["nutanix_count_vm_rule_protected"].labels(entity=cluster.name).set(len([vm for vm in cluster_vms_list if vm.protection_type == 'RULE_PROTECTED']))
-                    self.__dict__["nutanix_count_vcpu"].labels(entity=cluster.name).set(sum([(vm.num_sockets * vm.num_cores_per_socket) for vm in cluster_vms_list]))
-                    self.__dict__["nutanix_count_vram_mib"].labels(entity=cluster.name).set(sum([(vm.memory_size_bytes / 1048576) for vm in cluster_vms_list]))
-                    self.__dict__["nutanix_count_vdisk"].labels(entity=cluster.name).set(sum(any(vdisk.backing_info.__class__.__name__ == 'VmDisk' for vdisk in vm.disks) for vm in cluster_vms_list if vm.disks))
-                    self.__dict__["nutanix_count_vdisk_ide"].labels(entity=cluster.name).set(sum(any((vdisk.backing_info.__class__.__name__ == 'VmDisk' and vdisk.disk_address.bus_type == 'IDE') for vdisk in vm.disks) for vm in cluster_vms_list if vm.disks))
-                    self.__dict__["nutanix_count_vdisk_sata"].labels(entity=cluster.name).set(sum(any((vdisk.backing_info.__class__.__name__ == 'VmDisk' and vdisk.disk_address.bus_type == 'SATA') for vdisk in vm.disks) for vm in cluster_vms_list if vm.disks))
-                    self.__dict__["nutanix_count_vdisk_scsi"].labels(entity=cluster.name).set(sum(any((vdisk.backing_info.__class__.__name__ == 'VmDisk' and vdisk.disk_address.bus_type == 'SCSI') for vdisk in vm.disks) for vm in cluster_vms_list if vm.disks))
-                    self.__dict__["nutanix_count_vnic"].labels(entity=cluster.name).set(sum([len(vm.nics) for vm in cluster_vms_list if vm.nics]))
+                    self.__dict__["nutanix_count_vm"].labels(prism_central="",cluster=cluster.name,host="").set(len(cluster_vms_list))
+                    self.__dict__["nutanix_count_vm_on"].labels(prism_central="",cluster=cluster.name,host="").set(len([vm for vm in cluster_vms_list if vm.power_state == 'ON']))
+                    self.__dict__["nutanix_count_vm_off"].labels(prism_central="",cluster=cluster.name,host="").set(len([vm for vm in cluster_vms_list if vm.power_state == 'OFF']))
+                    self.__dict__["nutanix_count_vm_boot_legacy"].labels(prism_central="",cluster=cluster.name,host="").set(len([vm for vm in cluster_vms_list if vm.boot_config.__class__.__name__ == 'LegacyBoot']))
+                    self.__dict__["nutanix_count_vm_boot_uefi"].labels(prism_central="",cluster=cluster.name,host="").set(len([vm for vm in cluster_vms_list if vm.boot_config.__class__.__name__ == 'UefiBoot']))
+                    self.__dict__["nutanix_count_vm_gpus"].labels(prism_central="",cluster=cluster.name,host="").set(len([vm for vm in cluster_vms_list if vm.gpus]))
+                    self.__dict__["nutanix_count_vm_unprotected"].labels(prism_central="",cluster=cluster.name,host="").set(len([vm for vm in cluster_vms_list if vm.protection_type == 'UNPROTECTED']))
+                    self.__dict__["nutanix_count_vm_pd_protected"].labels(prism_central="",cluster=cluster.name,host="").set(len([vm for vm in cluster_vms_list if vm.protection_type == 'PD_PROTECTED']))
+                    self.__dict__["nutanix_count_vm_rule_protected"].labels(prism_central="",cluster=cluster.name,host="").set(len([vm for vm in cluster_vms_list if vm.protection_type == 'RULE_PROTECTED']))
+                    self.__dict__["nutanix_count_vcpu"].labels(prism_central="",cluster=cluster.name,host="").set(sum([(vm.num_sockets * vm.num_cores_per_socket) for vm in cluster_vms_list]))
+                    self.__dict__["nutanix_count_vram_mib"].labels(prism_central="",cluster=cluster.name,host="").set(sum([(vm.memory_size_bytes / 1048576) for vm in cluster_vms_list]))
+                    self.__dict__["nutanix_count_vdisk"].labels(prism_central="",cluster=cluster.name,host="").set(sum(any(vdisk.backing_info.__class__.__name__ == 'VmDisk' for vdisk in vm.disks) for vm in cluster_vms_list if vm.disks))
+                    self.__dict__["nutanix_count_vdisk_ide"].labels(prism_central="",cluster=cluster.name,host="").set(sum(any((vdisk.backing_info.__class__.__name__ == 'VmDisk' and vdisk.disk_address.bus_type == 'IDE') for vdisk in vm.disks) for vm in cluster_vms_list if vm.disks))
+                    self.__dict__["nutanix_count_vdisk_sata"].labels(prism_central="",cluster=cluster.name,host="").set(sum(any((vdisk.backing_info.__class__.__name__ == 'VmDisk' and vdisk.disk_address.bus_type == 'SATA') for vdisk in vm.disks) for vm in cluster_vms_list if vm.disks))
+                    self.__dict__["nutanix_count_vdisk_scsi"].labels(prism_central="",cluster=cluster.name,host="").set(sum(any((vdisk.backing_info.__class__.__name__ == 'VmDisk' and vdisk.disk_address.bus_type == 'SCSI') for vdisk in vm.disks) for vm in cluster_vms_list if vm.disks))
+                    self.__dict__["nutanix_count_vnic"].labels(prism_central="",cluster=cluster.name,host="").set(sum([len(vm.nics) for vm in cluster_vms_list if vm.nics]))
                     cluster_vms_with_ngt = [vm for vm in cluster_vms_list if vm.guest_tools]
-                    self.__dict__["nutanix_count_ngt_installed"].labels(entity=cluster.name).set(len([vm for vm in cluster_vms_with_ngt if vm.guest_tools.is_installed is True]))
-                    self.__dict__["nutanix_count_ngt_enabled"].labels(entity=cluster.name).set(len([vm for vm in cluster_vms_with_ngt if vm.guest_tools.is_enabled is True]))
-                    self.__dict__["nutanix_count_ngt_reachable"].labels(entity=cluster.name).set(len([vm for vm in cluster_vms_with_ngt if vm.guest_tools.is_reachable is True]))
-                    self.__dict__["nutanix_count_ngt_vss_snapshot_capable"].labels(entity=cluster.name).set(len([vm for vm in cluster_vms_with_ngt if vm.guest_tools.is_vss_snapshot_capable is True]))
+                    self.__dict__["nutanix_count_ngt_installed"].labels(prism_central="",cluster=cluster.name,host="").set(len([vm for vm in cluster_vms_with_ngt if vm.guest_tools.is_installed is True]))
+                    self.__dict__["nutanix_count_ngt_enabled"].labels(prism_central="",cluster=cluster.name,host="").set(len([vm for vm in cluster_vms_with_ngt if vm.guest_tools.is_enabled is True]))
+                    self.__dict__["nutanix_count_ngt_reachable"].labels(prism_central="",cluster=cluster.name,host="").set(len([vm for vm in cluster_vms_with_ngt if vm.guest_tools.is_reachable is True]))
+                    self.__dict__["nutanix_count_ngt_vss_snapshot_capable"].labels(prism_central="",cluster=cluster.name,host="").set(len([vm for vm in cluster_vms_with_ngt if vm.guest_tools.is_vss_snapshot_capable is True]))
             #endregion vm
 
             #region host
@@ -1102,7 +1106,7 @@ class NutanixMetrics:
             for cluster in cluster_list:
                 if 'PRISM_CENTRAL' not in cluster.config.cluster_function:
                     cluster_hosts_list = [host for host in host_list if host.cluster is not None and host.cluster.uuid == cluster.ext_id]
-                    self.__dict__["nutanix_count_node"].labels(entity=cluster.name).set(len(cluster_hosts_list))
+                    self.__dict__["nutanix_count_node"].labels(prism_central="",cluster=cluster.name,host="").set(len(cluster_hosts_list))
             #endregion host
 
             #region storage_container
@@ -1113,11 +1117,11 @@ class NutanixMetrics:
             for cluster in cluster_list:
                 if 'PRISM_CENTRAL' not in cluster.config.cluster_function:
                     cluster_storage_containers_list = [storage_container for storage_container in storage_container_list if storage_container.cluster_ext_id == cluster.ext_id]
-                    self.__dict__["nutanix_count_storage_container"].labels(entity=cluster.name).set(len(cluster_storage_containers_list))
-                    self.__dict__["nutanix_count_storage_container_encrypted"].labels(entity=cluster.name).set(len([storage_container for storage_container in cluster_storage_containers_list if storage_container.is_encrypted is True]))
-                    self.__dict__["nutanix_count_storage_container_rf1"].labels(entity=cluster.name).set(len([storage_container for storage_container in cluster_storage_containers_list if storage_container.replication_factor == 1]))
-                    self.__dict__["nutanix_count_storage_container_rf2"].labels(entity=cluster.name).set(len([storage_container for storage_container in cluster_storage_containers_list if storage_container.replication_factor == 2]))
-                    self.__dict__["nutanix_count_storage_container_rf3"].labels(entity=cluster.name).set(len([storage_container for storage_container in cluster_storage_containers_list if storage_container.replication_factor == 3]))
+                    self.__dict__["nutanix_count_storage_container"].labels(prism_central="",cluster=cluster.name,host="").set(len(cluster_storage_containers_list))
+                    self.__dict__["nutanix_count_storage_container_encrypted"].labels(prism_central="",cluster=cluster.name,host="").set(len([storage_container for storage_container in cluster_storage_containers_list if storage_container.is_encrypted is True]))
+                    self.__dict__["nutanix_count_storage_container_rf1"].labels(prism_central="",cluster=cluster.name,host="").set(len([storage_container for storage_container in cluster_storage_containers_list if storage_container.replication_factor == 1]))
+                    self.__dict__["nutanix_count_storage_container_rf2"].labels(prism_central="",cluster=cluster.name,host="").set(len([storage_container for storage_container in cluster_storage_containers_list if storage_container.replication_factor == 2]))
+                    self.__dict__["nutanix_count_storage_container_rf3"].labels(prism_central="",cluster=cluster.name,host="").set(len([storage_container for storage_container in cluster_storage_containers_list if storage_container.replication_factor == 3]))
             #endregion storage_container
 
             #region disk
@@ -1127,11 +1131,11 @@ class NutanixMetrics:
             for cluster in cluster_list:
                 if 'PRISM_CENTRAL' not in cluster.config.cluster_function:
                     cluster_disk_list = [disk for disk in disk_list if disk.cluster_ext_id == cluster.ext_id]
-                    self.__dict__["nutanix_count_disk"].labels(entity=cluster.name).set(len(cluster_disk_list))
-                    self.__dict__["nutanix_count_disk_ssd_pcie"].labels(entity=cluster.name).set(len([disk for disk in cluster_disk_list if disk.storage_tier == 'SSD_PCIE']))
-                    self.__dict__["nutanix_count_disk_ssd_sata"].labels(entity=cluster.name).set(len([disk for disk in cluster_disk_list if disk.storage_tier == 'SSD_SATA']))
-                    self.__dict__["nutanix_count_disk_das_sata"].labels(entity=cluster.name).set(len([disk for disk in cluster_disk_list if disk.storage_tier == 'DAS_SATA']))
-                    self.__dict__["nutanix_count_disk_ssd_mem_nvme"].labels(entity=cluster.name).set(len([disk for disk in cluster_disk_list if disk.storage_tier == 'SSD_MEM_NVME']))
+                    self.__dict__["nutanix_count_disk"].labels(prism_central="",cluster=cluster.name,host="").set(len(cluster_disk_list))
+                    self.__dict__["nutanix_count_disk_ssd_pcie"].labels(prism_central="",cluster=cluster.name,host="").set(len([disk for disk in cluster_disk_list if disk.storage_tier == 'SSD_PCIE']))
+                    self.__dict__["nutanix_count_disk_ssd_sata"].labels(prism_central="",cluster=cluster.name,host="").set(len([disk for disk in cluster_disk_list if disk.storage_tier == 'SSD_SATA']))
+                    self.__dict__["nutanix_count_disk_das_sata"].labels(prism_central="",cluster=cluster.name,host="").set(len([disk for disk in cluster_disk_list if disk.storage_tier == 'DAS_SATA']))
+                    self.__dict__["nutanix_count_disk_ssd_mem_nvme"].labels(prism_central="",cluster=cluster.name,host="").set(len([disk for disk in cluster_disk_list if disk.storage_tier == 'SSD_MEM_NVME']))
             #endregion disk
 
             #region networking
@@ -1141,7 +1145,7 @@ class NutanixMetrics:
             for cluster in cluster_list:
                 if 'PRISM_CENTRAL' not in cluster.config.cluster_function:
                     cluster_subnets_list = [subnet for subnet in subnet_list if subnet.cluster_reference == cluster.ext_id]
-                    self.__dict__["nutanix_count_subnet"].labels(entity=cluster.name).set(len(cluster_subnets_list))
+                    self.__dict__["nutanix_count_subnet"].labels(prism_central="",cluster=cluster.name,host="").set(len(cluster_subnets_list))
             #endregion networking
 
             #endregion count
@@ -1224,27 +1228,27 @@ class NutanixMetrics:
             for host in host_list:
                 powered_on_vms_list= [vm for vm in vms_list if vm.power_state == 'ON']
                 host_vms_list= [vm for vm in powered_on_vms_list if vm.host.ext_id == host.ext_id]
-                self.__dict__["nutanix_count_vm"].labels(entity=host.host_name).set(len(host_vms_list))
-                self.__dict__["nutanix_count_vm_on"].labels(entity=host.host_name).set(len([vm for vm in host_vms_list if vm.power_state == 'ON']))
-                self.__dict__["nutanix_count_vm_off"].labels(entity=host.host_name).set(len([vm for vm in host_vms_list if vm.power_state == 'OFF']))
-                self.__dict__["nutanix_count_vm_boot_legacy"].labels(entity=host.host_name).set(len([vm for vm in host_vms_list if vm.boot_config.__class__.__name__ == 'LegacyBoot']))
-                self.__dict__["nutanix_count_vm_boot_uefi"].labels(entity=host.host_name).set(len([vm for vm in host_vms_list if vm.boot_config.__class__.__name__ == 'UefiBoot']))
-                self.__dict__["nutanix_count_vm_gpus"].labels(entity=host.host_name).set(len([vm for vm in host_vms_list if vm.gpus]))
-                self.__dict__["nutanix_count_vm_unprotected"].labels(entity=host.host_name).set(len([vm for vm in host_vms_list if vm.protection_type == 'UNPROTECTED']))
-                self.__dict__["nutanix_count_vm_pd_protected"].labels(entity=host.host_name).set(len([vm for vm in host_vms_list if vm.protection_type == 'PD_PROTECTED']))
-                self.__dict__["nutanix_count_vm_rule_protected"].labels(entity=host.host_name).set(len([vm for vm in host_vms_list if vm.protection_type == 'RULE_PROTECTED']))
-                self.__dict__["nutanix_count_vcpu"].labels(entity=host.host_name).set(sum([(vm.num_sockets * vm.num_cores_per_socket) for vm in host_vms_list]))
-                self.__dict__["nutanix_count_vram_mib"].labels(entity=host.host_name).set(sum([(vm.memory_size_bytes / 1048576) for vm in host_vms_list]))
-                self.__dict__["nutanix_count_vdisk"].labels(entity=host.host_name).set(sum(any(vdisk.backing_info.__class__.__name__ == 'VmDisk' for vdisk in vm.disks) for vm in host_vms_list if vm.disks))
-                self.__dict__["nutanix_count_vdisk_ide"].labels(entity=host.host_name).set(sum(any((vdisk.backing_info.__class__.__name__ == 'VmDisk' and vdisk.disk_address.bus_type == 'IDE') for vdisk in vm.disks) for vm in host_vms_list if vm.disks))
-                self.__dict__["nutanix_count_vdisk_sata"].labels(entity=host.host_name).set(sum(any((vdisk.backing_info.__class__.__name__ == 'VmDisk' and vdisk.disk_address.bus_type == 'SATA') for vdisk in vm.disks) for vm in host_vms_list if vm.disks))
-                self.__dict__["nutanix_count_vdisk_scsi"].labels(entity=host.host_name).set(sum(any((vdisk.backing_info.__class__.__name__ == 'VmDisk' and vdisk.disk_address.bus_type == 'SCSI') for vdisk in vm.disks) for vm in host_vms_list if vm.disks))
-                self.__dict__["nutanix_count_vnic"].labels(entity=host.host_name).set(sum([len(vm.nics) for vm in host_vms_list if vm.nics]))
+                self.__dict__["nutanix_count_vm"].labels(prism_central="",cluster="",host=host.host_name).set(len(host_vms_list))
+                self.__dict__["nutanix_count_vm_on"].labels(prism_central="",cluster="",host=host.host_name).set(len([vm for vm in host_vms_list if vm.power_state == 'ON']))
+                self.__dict__["nutanix_count_vm_off"].labels(prism_central="",cluster="",host=host.host_name).set(len([vm for vm in host_vms_list if vm.power_state == 'OFF']))
+                self.__dict__["nutanix_count_vm_boot_legacy"].labels(prism_central="",cluster="",host=host.host_name).set(len([vm for vm in host_vms_list if vm.boot_config.__class__.__name__ == 'LegacyBoot']))
+                self.__dict__["nutanix_count_vm_boot_uefi"].labels(prism_central="",cluster="",host=host.host_name).set(len([vm for vm in host_vms_list if vm.boot_config.__class__.__name__ == 'UefiBoot']))
+                self.__dict__["nutanix_count_vm_gpus"].labels(prism_central="",cluster="",host=host.host_name).set(len([vm for vm in host_vms_list if vm.gpus]))
+                self.__dict__["nutanix_count_vm_unprotected"].labels(prism_central="",cluster="",host=host.host_name).set(len([vm for vm in host_vms_list if vm.protection_type == 'UNPROTECTED']))
+                self.__dict__["nutanix_count_vm_pd_protected"].labels(prism_central="",cluster="",host=host.host_name).set(len([vm for vm in host_vms_list if vm.protection_type == 'PD_PROTECTED']))
+                self.__dict__["nutanix_count_vm_rule_protected"].labels(prism_central="",cluster="",host=host.host_name).set(len([vm for vm in host_vms_list if vm.protection_type == 'RULE_PROTECTED']))
+                self.__dict__["nutanix_count_vcpu"].labels(prism_central="",cluster="",host=host.host_name).set(sum([(vm.num_sockets * vm.num_cores_per_socket) for vm in host_vms_list]))
+                self.__dict__["nutanix_count_vram_mib"].labels(prism_central="",cluster="",host=host.host_name).set(sum([(vm.memory_size_bytes / 1048576) for vm in host_vms_list]))
+                self.__dict__["nutanix_count_vdisk"].labels(prism_central="",cluster="",host=host.host_name).set(sum(any(vdisk.backing_info.__class__.__name__ == 'VmDisk' for vdisk in vm.disks) for vm in host_vms_list if vm.disks))
+                self.__dict__["nutanix_count_vdisk_ide"].labels(prism_central="",cluster="",host=host.host_name).set(sum(any((vdisk.backing_info.__class__.__name__ == 'VmDisk' and vdisk.disk_address.bus_type == 'IDE') for vdisk in vm.disks) for vm in host_vms_list if vm.disks))
+                self.__dict__["nutanix_count_vdisk_sata"].labels(prism_central="",cluster="",host=host.host_name).set(sum(any((vdisk.backing_info.__class__.__name__ == 'VmDisk' and vdisk.disk_address.bus_type == 'SATA') for vdisk in vm.disks) for vm in host_vms_list if vm.disks))
+                self.__dict__["nutanix_count_vdisk_scsi"].labels(prism_central="",cluster="",host=host.host_name).set(sum(any((vdisk.backing_info.__class__.__name__ == 'VmDisk' and vdisk.disk_address.bus_type == 'SCSI') for vdisk in vm.disks) for vm in host_vms_list if vm.disks))
+                self.__dict__["nutanix_count_vnic"].labels(prism_central="",cluster="",host=host.host_name).set(sum([len(vm.nics) for vm in host_vms_list if vm.nics]))
                 host_vms_with_ngt = [vm for vm in host_vms_list if vm.guest_tools]
-                self.__dict__["nutanix_count_ngt_installed"].labels(entity=host.host_name).set(len([vm for vm in host_vms_with_ngt if vm.guest_tools.is_installed is True]))
-                self.__dict__["nutanix_count_ngt_enabled"].labels(entity=host.host_name).set(len([vm for vm in host_vms_with_ngt if vm.guest_tools.is_enabled is True]))
-                self.__dict__["nutanix_count_ngt_reachable"].labels(entity=host.host_name).set(len([vm for vm in host_vms_with_ngt if vm.guest_tools.is_reachable is True]))
-                self.__dict__["nutanix_count_ngt_vss_snapshot_capable"].labels(entity=host.host_name).set(len([vm for vm in host_vms_with_ngt if vm.guest_tools.is_vss_snapshot_capable is True]))
+                self.__dict__["nutanix_count_ngt_installed"].labels(prism_central="",cluster="",host=host.host_name).set(len([vm for vm in host_vms_with_ngt if vm.guest_tools.is_installed is True]))
+                self.__dict__["nutanix_count_ngt_enabled"].labels(prism_central="",cluster="",host=host.host_name).set(len([vm for vm in host_vms_with_ngt if vm.guest_tools.is_enabled is True]))
+                self.__dict__["nutanix_count_ngt_reachable"].labels(prism_central="",cluster="",host=host.host_name).set(len([vm for vm in host_vms_with_ngt if vm.guest_tools.is_reachable is True]))
+                self.__dict__["nutanix_count_ngt_vss_snapshot_capable"].labels(prism_central="",cluster="",host=host.host_name).set(len([vm for vm in host_vms_with_ngt if vm.guest_tools.is_vss_snapshot_capable is True]))
             #endregion vm
 
             #region disk
@@ -1253,11 +1257,11 @@ class NutanixMetrics:
                 disk_list = v4_get_all_entities(module=ntnx_clustermgmt_py_client,client=clustermgmt_client,function='list_disks',limit=limit,module_entity_api='DisksApi')
             for host in host_list:
                 host_disk_list = [disk for disk in disk_list if disk.node_ext_id == host.ext_id]
-                self.__dict__["nutanix_count_disk"].labels(entity=host.host_name).set(len(host_disk_list))
-                self.__dict__["nutanix_count_disk_ssd_pcie"].labels(entity=host.host_name).set(len([disk for disk in host_disk_list if disk.storage_tier == 'SSD_PCIE']))
-                self.__dict__["nutanix_count_disk_ssd_sata"].labels(entity=host.host_name).set(len([disk for disk in host_disk_list if disk.storage_tier == 'SSD_SATA']))
-                self.__dict__["nutanix_count_disk_das_sata"].labels(entity=host.host_name).set(len([disk for disk in host_disk_list if disk.storage_tier == 'DAS_SATA']))
-                self.__dict__["nutanix_count_disk_ssd_mem_nvme"].labels(entity=host.host_name).set(len([disk for disk in host_disk_list if disk.storage_tier == 'SSD_MEM_NVME']))
+                self.__dict__["nutanix_count_disk"].labels(prism_central="",cluster="",host=host.host_name).set(len(host_disk_list))
+                self.__dict__["nutanix_count_disk_ssd_pcie"].labels(prism_central="",cluster="",host=host.host_name).set(len([disk for disk in host_disk_list if disk.storage_tier == 'SSD_PCIE']))
+                self.__dict__["nutanix_count_disk_ssd_sata"].labels(prism_central="",cluster="",host=host.host_name).set(len([disk for disk in host_disk_list if disk.storage_tier == 'SSD_SATA']))
+                self.__dict__["nutanix_count_disk_das_sata"].labels(prism_central="",cluster="",host=host.host_name).set(len([disk for disk in host_disk_list if disk.storage_tier == 'DAS_SATA']))
+                self.__dict__["nutanix_count_disk_ssd_mem_nvme"].labels(prism_central="",cluster="",host=host.host_name).set(len([disk for disk in host_disk_list if disk.storage_tier == 'SSD_MEM_NVME']))
             #endregion disk
 
             #endregion count
@@ -2336,746 +2340,6 @@ class NutanixMetrics:
         #endregion #?endpoint_timings_summary
 
         #endregion #?volumes
-
-
-class NutanixMetricsLegacy:
-    """
-    Representation of Prometheus metrics and loop to fetch and transform
-    application metrics into Prometheus metrics.
-    """
-    def __init__(self,
-                 ipmi_username='ADMIN', ipmi_secret=None,
-                 app_port=9440, polling_interval_seconds=30, api_requests_timeout_seconds=30, api_requests_retries=5, api_sleep_seconds_between_retries=15,
-                 prism='127.0.0.1', user='admin', pwd='Nutanix/4u', prism_secure=False,
-                 vm_list='',
-                 cluster_metrics=True, storage_containers_metrics=True, ipmi_metrics=True, prism_central_metrics=False, ncm_ssp_metrics=False):
-        self.ipmi_username = ipmi_username
-        self.ipmi_secret = ipmi_secret
-        self.app_port = app_port
-        self.polling_interval_seconds = polling_interval_seconds
-        self.api_requests_timeout_seconds = api_requests_timeout_seconds
-        self.api_requests_retries = api_requests_retries
-        self.api_sleep_seconds_between_retries = api_sleep_seconds_between_retries
-        self.prism = prism
-        self.user = user
-        self.pwd = pwd
-        self.prism_secure = prism_secure
-        self.vm_list = vm_list
-        self.cluster_metrics = cluster_metrics
-        self.storage_containers_metrics = storage_containers_metrics
-        self.ipmi_metrics = ipmi_metrics
-        self.prism_central_metrics = prism_central_metrics
-        self.ncm_ssp_metrics = ncm_ssp_metrics
-
-        if self.cluster_metrics:
-            print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d_%H:%M:%S')} [INFO] Initializing metrics for clusters...{PrintColors.RESET}")
-
-            cluster_uuid, cluster_details = prism_get_cluster(api_server=prism,username=user,secret=pwd,secure=self.prism_secure,api_requests_timeout_seconds=self.api_requests_timeout_seconds, api_requests_retries=self.api_requests_retries, api_sleep_seconds_between_retries=self.api_sleep_seconds_between_retries)
-            hosts_details = prism_get_hosts(api_server=self.prism,username=self.user,secret=self.pwd,secure=self.prism_secure,api_requests_timeout_seconds=self.api_requests_timeout_seconds, api_requests_retries=self.api_requests_retries, api_sleep_seconds_between_retries=self.api_sleep_seconds_between_retries)
-
-            #creating host stats metrics
-            for key,value in hosts_details[0]['stats'].items():
-                #making sure we are compliant with the data model (https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
-                key_string = f"nutanix_host_stats_{key}"
-                key_string = key_string.replace(".","_")
-                key_string = key_string.replace("-","_")
-                setattr(self, key_string, Gauge(key_string, key_string, ['host']))
-            for key,value in hosts_details[0]['usage_stats'].items():
-                #making sure we are compliant with the data model (https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
-                key_string = f"nutanix_host_usage_stats_{key}"
-                key_string = key_string.replace(".","_")
-                key_string = key_string.replace("-","_")
-                setattr(self, key_string, Gauge(key_string, key_string, ['host']))
-
-            #creating cluster stats metrics
-            for key,value in cluster_details['stats'].items():
-                #making sure we are compliant with the data model (https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
-                key_string = f"nutanix_cluster_stats_{key}"
-                key_string = key_string.replace(".","_")
-                key_string = key_string.replace("-","_")
-                setattr(self, key_string, Gauge(key_string, key_string, ['cluster']))
-            for key,value in cluster_details['usage_stats'].items():
-                #making sure we are compliant with the data model (https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
-                key_string = f"nutanix_cluster_usage_stats_{key}"
-                key_string = key_string.replace(".","_")
-                key_string = key_string.replace("-","_")
-                setattr(self, key_string, Gauge(key_string, key_string, ['cluster']))
-
-            #creating cluster counts metrics
-            key_strings = [
-                "nutanix_count_vg",
-                "nutanix_count_vm",
-                "nutanix_count_vm_on",
-                "nutanix_count_vm_off",
-                "nutanix_count_vcpu",
-                "nutanix_count_vram_mib",
-                "nutanix_count_vdisk",
-                "nutanix_count_vdisk_ide",
-                "nutanix_count_vdisk_sata",
-                "nutanix_count_vdisk_scsi",
-                "nutanix_count_vnic"
-            ]
-            for key_string in key_strings:
-                setattr(self, key_string, Gauge(key_string, key_string, ['entity']))
-
-            #other misc info based metrics
-            setattr(self, 'nutanix_cluster', Info('nutanix_cluster', 'Misc cluster information'))
-
-        if self.vm_list:
-            print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d_%H:%M:%S')} [INFO] Initializing metrics for virtual machines...{PrintColors.RESET}")
-            vm_list_array = self.vm_list.split(',')
-            vm_details = prism_get_vm(vm_name=vm_list_array[0],api_server=prism,username=user,secret=pwd,secure=self.prism_secure,api_requests_timeout_seconds=self.api_requests_timeout_seconds, api_requests_retries=self.api_requests_retries, api_sleep_seconds_between_retries=self.api_sleep_seconds_between_retries)
-            if len(vm_details) > 0:
-                for key,value in vm_details['stats'].items():
-                    #making sure we are compliant with the data model (https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
-                    key_string = f"nutanix_vms_stats_{key}"
-                    key_string = key_string.replace(".","_")
-                    key_string = key_string.replace("-","_")
-                    setattr(self, key_string, Gauge(key_string, key_string, ['vm']))
-                for key,value in vm_details['usageStats'].items():
-                    #making sure we are compliant with the data model (https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
-                    key_string = f"nutanix_vms_usage_stats_{key}"
-                    key_string = key_string.replace(".","_")
-                    key_string = key_string.replace("-","_")
-                    setattr(self, key_string, Gauge(key_string, key_string, ['vm']))
-            else:
-                print(f"{PrintColors.FAIL}{(datetime.now()).strftime('%Y-%m-%d_%H:%M:%S')} [ERROR] Specified VM {vm_list_array[0]} does not exist on Prism Element {prism}...{PrintColors.RESET}")
-                exit(1)
-
-        if self.storage_containers_metrics:
-            print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d_%H:%M:%S')} [INFO] Initializing metrics for storage containers...{PrintColors.RESET}")
-            storage_containers_details = prism_get_storage_containers(api_server=prism,username=user,secret=pwd,secure=self.prism_secure,api_requests_timeout_seconds=self.api_requests_timeout_seconds, api_requests_retries=self.api_requests_retries, api_sleep_seconds_between_retries=self.api_sleep_seconds_between_retries)
-            for key,value in storage_containers_details[0]['stats'].items():
-                #making sure we are compliant with the data model (https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
-                key_string = f"nutanix_storage_container_stats_{key}"
-                key_string = key_string.replace(".","_")
-                key_string = key_string.replace("-","_")
-                setattr(self, key_string, Gauge(key_string, key_string, ['storage_container']))
-            for key,value in storage_containers_details[0]['usage_stats'].items():
-                #making sure we are compliant with the data model (https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
-                key_string = f"nutanix_storage_container_usage_stats_{key}"
-                key_string = key_string.replace(".","_")
-                key_string = key_string.replace("-","_")
-                setattr(self, key_string, Gauge(key_string, key_string, ['storage_container']))
-
-        if self.ipmi_metrics:
-            print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d_%H:%M:%S')} [INFO] Initializing metrics for IPMI adapters...{PrintColors.RESET}")
-            key_strings = [
-                "nutanix_power_consumption_power_consumed_watts",
-                "nutanix_power_consumption_min_consumed_watts",
-                "nutanix_power_consumption_max_consumed_watts",
-                "nutanix_power_consumption_average_consumed_watts",
-                "nutanix_thermal_cpu_temp_celsius",
-                "nutanix_thermal_pch_temp_celcius",
-                "nutanix_thermal_system_temp_celcius",
-                "nutanix_thermal_peripheral_temp_celcius",
-                "nutanix_thermal_inlet_temp_celcius",
-                "nutanix_power_state",
-                "nutanix_cpu_utilization",
-                "nutanix_memory_utilization"
-            ]
-            for key_string in key_strings:
-                setattr(self, key_string, Gauge(key_string, key_string, ['node']))
-
-        if self.prism_central_metrics:
-            print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d_%H:%M:%S')} [INFO] Initializing metrics for Prism Central...{PrintColors.RESET}")
-            key_strings = [
-                "nutanix_count_vg",
-                "nutanix_count_vm",
-                "nutanix_count_vm_on",
-                "nutanix_count_vm_off",
-                "nutanix_count_vcpu",
-                "nutanix_count_vram_mib",
-                "nutanix_count_vdisk",
-                "nutanix_count_vdisk_ide",
-                "nutanix_count_vdisk_sata",
-                "nutanix_count_vdisk_scsi",
-                "nutanix_count_vnic",
-                "nutanix_count_category",
-                "nutanix_count_vm_protected",
-                "nutanix_count_vm_protected_compliant",
-                "nutanix_count_vm_protected_synced",
-                "nutanix_count_ngt_installed",
-                "nutanix_count_ngt_enabled"
-            ]
-            for key_string in key_strings:
-                setattr(self, key_string, Gauge(key_string, key_string, ['prism_central']))
-
-        if self.ncm_ssp_metrics:
-            print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d_%H:%M:%S')} [INFO] Initializing metrics for NCM SSP...{PrintColors.RESET}")
-            key_strings = [
-                "nutanix_ncm_count_applications",
-                "nutanix_ncm_count_applications_provisioning",
-                "nutanix_ncm_count_applications_running",
-                "nutanix_ncm_count_applications_error",
-                "nutanix_ncm_count_applications_deleting",
-                "nutanix_ncm_count_blueprints",
-                "nutanix_ncm_count_runbooks",
-                "nutanix_ncm_count_projects",
-                "nutanix_ncm_count_marketplace_items"
-            ]
-            for key_string in key_strings:
-                setattr(self, key_string, Gauge(key_string, key_string, ['ncm_ssp']))
-
-
-    def run_metrics_loop(self):
-        """Metrics fetching loop"""
-        print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [INFO] Starting metrics loop {PrintColors.RESET}")
-        while True:
-            self.fetch()
-            print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [INFO] Waiting for {self.polling_interval_seconds} seconds...{PrintColors.RESET}")
-            time.sleep(self.polling_interval_seconds)
-
-
-    def fetch(self):
-        """
-        Get metrics from application and refresh Prometheus metrics with
-        new values.
-        """
-
-        if self.cluster_metrics:
-            print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [INFO] Collecting clusters metrics{PrintColors.RESET}")
-            cluster_uuid, cluster_details = prism_get_cluster(api_server=self.prism,username=self.user,secret=self.pwd,secure=self.prism_secure,api_requests_timeout_seconds=self.api_requests_timeout_seconds, api_requests_retries=self.api_requests_retries, api_sleep_seconds_between_retries=self.api_sleep_seconds_between_retries)
-            vm_details = prism_get_vms(api_server=self.prism,username=self.user,secret=self.pwd,secure=self.prism_secure,api_requests_timeout_seconds=self.api_requests_timeout_seconds, api_requests_retries=self.api_requests_retries, api_sleep_seconds_between_retries=self.api_sleep_seconds_between_retries)
-            hosts_details = prism_get_hosts(api_server=self.prism,username=self.user,secret=self.pwd,secure=self.prism_secure,api_requests_timeout_seconds=self.api_requests_timeout_seconds, api_requests_retries=self.api_requests_retries, api_sleep_seconds_between_retries=self.api_sleep_seconds_between_retries)
-            vg_details = prism_get_volume_groups(api_server=self.prism,username=self.user,secret=self.pwd,secure=self.prism_secure,api_requests_timeout_seconds=self.api_requests_timeout_seconds, api_requests_retries=self.api_requests_retries, api_sleep_seconds_between_retries=self.api_sleep_seconds_between_retries)
-
-            vms_powered_on = [vm for vm in vm_details if vm['power_state'] == "on"]
-
-            for host in hosts_details:
-                #populating values for host stats metrics
-                for key, value in host['stats'].items():
-                    #making sure we are compliant with the data model (https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
-                    key_string = f"nutanix_host_stats_{key}"
-                    key_string = key_string.replace(".","_")
-                    key_string = key_string.replace("-","_")
-                    self.__dict__[key_string].labels(host=host['name']).set(value)
-                for key, value in host['usage_stats'].items():
-                    #making sure we are compliant with the data model (https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
-                    key_string = f"nutanix_host_usage_stats_{key}"
-                    key_string = key_string.replace(".","_")
-                    key_string = key_string.replace("-","_")
-                    self.__dict__[key_string].labels(host=host['name']).set(value)
-                #populating values for host count metrics
-                host_vms_list = [vm for vm in vms_powered_on if vm['host_uuid'] == host['uuid']]
-                key_string = "nutanix_count_vm"
-                self.__dict__[key_string].labels(entity=host['name']).set(len(host_vms_list))
-                key_string = "nutanix_count_vcpu"
-                self.__dict__[key_string].labels(entity=host['name']).set(sum([(vm['num_vcpus'] * vm['num_cores_per_vcpu']) for vm in host_vms_list]))
-                key_string = "nutanix_count_vram_mib"
-                self.__dict__[key_string].labels(entity=host['name']).set(sum([vm['memory_mb'] for vm in host_vms_list]))
-                key_string = "nutanix_count_vdisk"
-                self.__dict__[key_string].labels(entity=host['name']).set(sum([len([vdisk for vdisk in vm['vm_disk_info'] if vdisk['is_cdrom'] is False]) for vm in host_vms_list]))
-                key_string = "nutanix_count_vdisk_ide"
-                self.__dict__[key_string].labels(entity=host['name']).set(sum([len([vdisk for vdisk in vm['vm_disk_info'] if (vdisk['is_cdrom'] is False) and (vdisk['disk_address']['device_bus'] == 'ide')]) for vm in host_vms_list]))
-                key_string = "nutanix_count_vdisk_sata"
-                self.__dict__[key_string].labels(entity=host['name']).set(sum([len([vdisk for vdisk in vm['vm_disk_info'] if (vdisk['is_cdrom'] is False) and (vdisk['disk_address']['device_bus'] == 'sata')]) for vm in host_vms_list]))
-                key_string = "nutanix_count_vdisk_scsi"
-                self.__dict__[key_string].labels(entity=host['name']).set(sum([len([vdisk for vdisk in vm['vm_disk_info'] if (vdisk['is_cdrom'] is False) and (vdisk['disk_address']['device_bus'] == 'scsi')]) for vm in host_vms_list]))
-                key_string = "nutanix_count_vnic"
-                self.__dict__[key_string].labels(entity=host['name']).set(sum([len(vm['vm_nics']) for vm in host_vms_list]))
-
-            #populating values for cluster stats metrics
-            for key, value in cluster_details['stats'].items():
-                #making sure we are compliant with the data model (https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
-                key_string = f"nutanix_cluster_stats_{key}"
-                key_string = key_string.replace(".","_")
-                key_string = key_string.replace("-","_")
-                self.__dict__[key_string].labels(cluster=cluster_details['name']).set(value)
-            for key, value in cluster_details['usage_stats'].items():
-                #making sure we are compliant with the data model (https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
-                key_string = f"nutanix_cluster_usage_stats_{key}"
-                key_string = key_string.replace(".","_")
-                key_string = key_string.replace("-","_")
-                self.__dict__[key_string].labels(cluster=cluster_details['name']).set(value)
-
-            #populating values for cluster count metrics
-            key_string = "nutanix_count_vg"
-            self.__dict__[key_string].labels(entity=cluster_details['name']).set(len(vg_details))
-            key_string = "nutanix_count_vm"
-            self.__dict__[key_string].labels(entity=cluster_details['name']).set(len(vm_details))
-            key_string = "nutanix_count_vm_on"
-            self.__dict__[key_string].labels(entity=cluster_details['name']).set(len([vm for vm in vm_details if vm['power_state'] == "on"]))
-            key_string = "nutanix_count_vm_off"
-            self.__dict__[key_string].labels(entity=cluster_details['name']).set(len([vm for vm in vm_details if vm['power_state'] == "off"]))
-            key_string = "nutanix_count_vcpu"
-            self.__dict__[key_string].labels(entity=cluster_details['name']).set(sum([(vm['num_vcpus'] * vm['num_cores_per_vcpu']) for vm in vm_details]))
-            key_string = "nutanix_count_vram_mib"
-            self.__dict__[key_string].labels(entity=cluster_details['name']).set(sum([vm['memory_mb'] for vm in vm_details]))
-            key_string = "nutanix_count_vdisk"
-            self.__dict__[key_string].labels(entity=cluster_details['name']).set(sum([len([vdisk for vdisk in vm['vm_disk_info'] if vdisk['is_cdrom'] is False]) for vm in vm_details]))
-            key_string = "nutanix_count_vdisk_ide"
-            self.__dict__[key_string].labels(entity=cluster_details['name']).set(sum([len([vdisk for vdisk in vm['vm_disk_info'] if (vdisk['is_cdrom'] is False) and (vdisk['disk_address']['device_bus'] == 'ide')]) for vm in vm_details]))
-            key_string = "nutanix_count_vdisk_sata"
-            self.__dict__[key_string].labels(entity=cluster_details['name']).set(sum([len([vdisk for vdisk in vm['vm_disk_info'] if (vdisk['is_cdrom'] is False) and (vdisk['disk_address']['device_bus'] == 'sata')]) for vm in vm_details]))
-            key_string = "nutanix_count_vdisk_scsi"
-            self.__dict__[key_string].labels(entity=cluster_details['name']).set(sum([len([vdisk for vdisk in vm['vm_disk_info'] if (vdisk['is_cdrom'] is False) and (vdisk['disk_address']['device_bus'] == 'scsi')]) for vm in vm_details]))
-            key_string = "nutanix_count_vnic"
-            self.__dict__[key_string].labels(entity=cluster_details['name']).set(sum([len(vm['vm_nics']) for vm in vm_details]))
-
-            #populating values for other misc info based metrics
-            #self.lts.labels(cluster=cluster_details['name']).state(str(cluster_details['is_lts']))
-            key_string = "nutanix_cluster"
-            labels = {
-                'entity': cluster_details['name'],
-                'is_lts': str(cluster_details['is_lts']),
-                'num_nodes': str(cluster_details['num_nodes']),
-                'model_name': str(cluster_details['rackable_units'][0]['model_name']),
-                'storage_type': str(cluster_details['storage_type']),
-                'version': str(cluster_details['version']),
-                'is_nsenabled': str(cluster_details['is_nsenabled']),
-                'encrypted': str(cluster_details['encrypted']),
-                'timezone': str(cluster_details['timezone']),
-                'operation_mode': str(cluster_details['operation_mode']),
-                'enable_shadow_clones': str(cluster_details['enable_shadow_clones']),
-                'desired_redundancy_factor': str(cluster_details['cluster_redundancy_state']['desired_redundancy_factor']),
-                'enable_rebuild_reservation': str(cluster_details['enable_rebuild_reservation']),
-                'fault_tolerance_domain_type': str(cluster_details['fault_tolerance_domain_type']),
-                'data_in_transit_encryption_dto': str(cluster_details['data_in_transit_encryption_dto']['enabled'])
-            }
-            self.__dict__[key_string].info(labels)
-
-        if self.vm_list:
-            vm_list_array = self.vm_list.split(',')
-            for vm in vm_list_array:
-                print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [INFO] Collecting vm metrics for {vm}{PrintColors.RESET}")
-                vm_details = prism_get_vm(vm_name=vm,api_server=self.prism,username=self.user,secret=self.pwd,secure=self.prism_secure,api_requests_timeout_seconds=self.api_requests_timeout_seconds, api_requests_retries=self.api_requests_retries, api_sleep_seconds_between_retries=self.api_sleep_seconds_between_retries)
-                for key, value in vm_details['stats'].items():
-                    #making sure we are compliant with the data model (https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
-                    key_string = f"nutanix_vms_stats_{key}"
-                    key_string = key_string.replace(".","_")
-                    key_string = key_string.replace("-","_")
-                    self.__dict__[key_string].labels(vm=vm_details['vmName']).set(value)
-                for key, value in vm_details['usageStats'].items():
-                    #making sure we are compliant with the data model (https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
-                    key_string = f"nutanix_vms_usage_stats_{key}"
-                    key_string = key_string.replace(".","_")
-                    key_string = key_string.replace("-","_")
-                    self.__dict__[key_string].labels(vm=vm_details['vmName']).set(value)
-
-        if self.storage_containers_metrics:
-            print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [INFO] Collecting storage containers metrics{PrintColors.RESET}")
-            storage_containers_details = prism_get_storage_containers(api_server=self.prism,username=self.user,secret=self.pwd,secure=self.prism_secure,api_requests_timeout_seconds=self.api_requests_timeout_seconds, api_requests_retries=self.api_requests_retries, api_sleep_seconds_between_retries=self.api_sleep_seconds_between_retries)
-            for container in storage_containers_details:
-                for key, value in container['stats'].items():
-                    #making sure we are compliant with the data model (https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
-                    key_string = f"nutanix_storage_container_stats_{key}"
-                    key_string = key_string.replace(".","_")
-                    key_string = key_string.replace("-","_")
-                    self.__dict__[key_string].labels(storage_container=container['name']).set(value)
-                for key, value in container['usage_stats'].items():
-                    #making sure we are compliant with the data model (https://prometheus.io/docs/concepts/data_model/#metric-names-and-labels)
-                    key_string = f"nutanix_storage_container_usage_stats_{key}"
-                    key_string = key_string.replace(".","_")
-                    key_string = key_string.replace("-","_")
-                    self.__dict__[key_string].labels(storage_container=container['name']).set(value)
-
-        if self.ipmi_metrics:
-            print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [INFO] Collecting IPMI metrics{PrintColors.RESET}")
-            if not self.cluster_metrics:
-                hosts_details = prism_get_hosts(api_server=self.prism,username=self.user,secret=self.pwd,secure=self.prism_secure,api_requests_timeout_seconds=self.api_requests_timeout_seconds, api_requests_retries=self.api_requests_retries, api_sleep_seconds_between_retries=self.api_sleep_seconds_between_retries)
-            for node in hosts_details:
-                #* figuring out management module creds
-                if self.ipmi_username is not None:
-                    ipmi_username = self.ipmi_username
-                else:
-                    ipmi_username = 'ADMIN'
-                if self.ipmi_secret is not None and self.ipmi_secret != 'null':
-                    ipmi_secret = self.ipmi_secret
-                else:
-                    ipmi_secret = node['serial']
-
-                #* getting node name for labels
-                node_name = node['name']
-                node_name = node_name.replace(".","_")
-                node_name = node_name.replace("-","_")
-
-                #* collection power consumption metrics
-                power_control = ipmi_get_powercontrol(node['ipmi_address'],secret=ipmi_secret,username=ipmi_username,secure=self.prism_secure)
-                key_string = "nutanix_power_consumption_power_consumed_watts"
-                self.__dict__[key_string].labels(node=node_name).set(power_control['PowerConsumedWatts'])
-                key_string = "nutanix_power_consumption_min_consumed_watts"
-                self.__dict__[key_string].labels(node=node_name).set(power_control['PowerMetrics']['MinConsumedWatts'])
-                key_string = "nutanix_power_consumption_max_consumed_watts"
-                self.__dict__[key_string].labels(node=node_name).set(power_control['PowerMetrics']['MaxConsumedWatts'])
-                key_string = "nutanix_power_consumption_average_consumed_watts"
-                self.__dict__[key_string].labels(node=node_name).set(power_control['PowerMetrics']['AverageConsumedWatts'])
-
-                #* collection thermal metrics
-                thermal = ipmi_get_thermal(node['ipmi_address'],secret=ipmi_secret,username=ipmi_username,secure=self.prism_secure)
-                cpu_temps = []
-                for temperature in thermal:
-                    if re.match(r"CPU\d+ Temp", temperature['Name']) and temperature['ReadingCelsius']:
-                        #key_string = "nutanix_thermal_cpu_temp_celsius"
-                        #self.__dict__[key_string].labels(node=node_name).set(temperature['ReadingCelsius'])
-                        cpu_temps.append(float(temperature['ReadingCelsius']))
-                    elif temperature['Name'] == 'PCH Temp' and temperature['ReadingCelsius']:
-                        key_string = "nutanix_thermal_pch_temp_celcius"
-                        self.__dict__[key_string].labels(node=node_name).set(temperature['ReadingCelsius'])
-                    elif temperature['Name'] == 'System Temp' and temperature['ReadingCelsius']:
-                        key_string = "nutanix_thermal_system_temp_celcius"
-                        self.__dict__[key_string].labels(node=node_name).set(temperature['ReadingCelsius'])
-                    elif temperature['Name'] == 'Peripheral Temp' and temperature['ReadingCelsius']:
-                        key_string = "nutanix_thermal_peripheral_temp_celcius"
-                        self.__dict__[key_string].labels(node=node_name).set(temperature['ReadingCelsius'])
-                    elif temperature['Name'] == 'Inlet Temp' and temperature['ReadingCelsius']:
-                        key_string = "nutanix_thermal_inlet_temp_celcius"
-                        self.__dict__[key_string].labels(node=node_name).set(temperature['ReadingCelsius'])
-                if cpu_temps:
-                    cpu_temp = sum(cpu_temps) / len(cpu_temps)
-                    key_string = "nutanix_thermal_cpu_temp_celsius"
-                    self.__dict__[key_string].labels(node=node_name).set(cpu_temp)
-
-        if self.prism_central_metrics:
-            print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [INFO] Collecting Prism Central metrics{PrintColors.RESET}")
-
-            if ipaddress.ip_address(self.prism):
-                try:
-                    prism_central_hostname = socket.gethostbyaddr(self.prism)[0]
-                except:
-                    prism_central_hostname = self.prism
-            else:
-                prism_central_hostname = self.prism
-
-            length=500
-            vm_details=[]
-
-            vm_count = get_total_entities(
-                api_server=self.prism,
-                username=self.user,
-                password=self.pwd,
-                entity_type='vm',
-                entity_api_root='vms',
-                secure=self.prism_secure
-            )
-
-            vg_count = get_total_entities(
-                api_server=self.prism,
-                username=self.user,
-                password=self.pwd,
-                entity_type='volume_group',
-                entity_api_root='volume_groups',
-                secure=self.prism_secure
-            )
-
-            with ThreadPoolExecutor(max_workers=10) as executor:
-                futures = [executor.submit(
-                    get_entities_batch,
-                    api_server=self.prism,
-                    username=self.user,
-                    password=self.pwd,
-                    entity_type='vm',
-                    entity_api_root='vms',
-                    offset= offset,
-                    length=length
-                    ) for offset in range(0, vm_count, length)]
-                for future in as_completed(futures):
-                    vms = future.result()
-                    vm_details.extend(vms)
-
-            #* volume groups metrics
-            key_string = "nutanix_count_vg"
-            self.__dict__[key_string].labels(prism_central=prism_central_hostname).set(vg_count)
-
-            #* general vm count metrics
-            key_string = "nutanix_count_vm"
-            self.__dict__[key_string].labels(prism_central=prism_central_hostname).set(len(vm_details))
-            key_string = "nutanix_count_vm_on"
-            self.__dict__[key_string].labels(prism_central=prism_central_hostname).set(len([vm for vm in vm_details if vm['status']['resources']['power_state'] == "ON"]))
-            key_string = "nutanix_count_vm_off"
-            self.__dict__[key_string].labels(prism_central=prism_central_hostname).set(len([vm for vm in vm_details if vm['status']['resources']['power_state'] == "OFF"]))
-            key_string = "nutanix_count_vcpu"
-            self.__dict__[key_string].labels(prism_central=prism_central_hostname).set(sum([(vm['status']['resources']['num_sockets'] * vm['status']['resources']['num_threads_per_core']) for vm in vm_details]))
-            key_string = "nutanix_count_vram_mib"
-            self.__dict__[key_string].labels(prism_central=prism_central_hostname).set(sum([vm['status']['resources']['memory_size_mib'] for vm in vm_details]))
-            key_string = "nutanix_count_vdisk"
-            self.__dict__[key_string].labels(prism_central=prism_central_hostname).set(sum([len([vdisk for vdisk in vm['status']['resources']['disk_list'] if vdisk['device_properties']['device_type'] == 'DISK']) for vm in vm_details]))
-            key_string = "nutanix_count_vdisk_ide"
-            self.__dict__[key_string].labels(prism_central=prism_central_hostname).set(sum([len([vdisk for vdisk in vm['status']['resources']['disk_list'] if (vdisk['device_properties']['device_type'] == 'DISK') and (vdisk['device_properties']['disk_address']['adapter_type'] == 'IDE')]) for vm in vm_details]))
-            key_string = "nutanix_count_vdisk_sata"
-            self.__dict__[key_string].labels(prism_central=prism_central_hostname).set(sum([len([vdisk for vdisk in vm['status']['resources']['disk_list'] if (vdisk['device_properties']['device_type'] == 'DISK') and (vdisk['device_properties']['disk_address']['adapter_type'] == 'SATA')]) for vm in vm_details]))
-            key_string = "nutanix_count_vdisk_scsi"
-            self.__dict__[key_string].labels(prism_central=prism_central_hostname).set(sum([len([vdisk for vdisk in vm['status']['resources']['disk_list'] if (vdisk['device_properties']['device_type'] == 'DISK') and (vdisk['device_properties']['disk_address']['adapter_type'] == 'SCSI')]) for vm in vm_details]))
-            key_string = "nutanix_count_vnic"
-            self.__dict__[key_string].labels(prism_central=prism_central_hostname).set(sum([len([vnic for vnic in vm['status']['resources']['nic_list']]) for vm in vm_details]))
-
-            #* categories count metrics
-            #todo: keep count of entities for each category
-            key_string = "nutanix_count_category"
-
-            #* DR protected vm count metrics
-            key_string = "nutanix_count_vm_protected"
-            self.__dict__[key_string].labels(prism_central=prism_central_hostname).set(len([vm for vm in vm_details if vm['status']['resources']['protection_type'] == "RULE_PROTECTED"]))
-            key_string = "nutanix_count_vm_protected_synced"
-            protected_vms_list = [vm for vm in vm_details if vm.get('status', {}).get('resources', {}).get('protection_policy_state') is not None]
-            protected_vms_with_status_list = [vm for vm in protected_vms_list if vm.get('status', {}).get('resources', {}).get('protection_policy_state').get('policy_info').get('replication_status') is not None]
-            self.__dict__[key_string].labels(prism_central=prism_central_hostname).set(len([protected_vm for protected_vm in protected_vms_with_status_list if protected_vm['status']['resources']['protection_policy_state']['policy_info']['replication_status'] == "SYNCED"]))
-            key_string = "nutanix_count_vm_protected_compliant"
-            self.__dict__[key_string].labels(prism_central=prism_central_hostname).set(len([protected_vm for protected_vm in protected_vms_list if protected_vm['status']['resources']['protection_policy_state']['compliance_status'] == "COMPLIANT"]))
-
-            #* NGT vm count metrics
-            ngt_vms_list = [vm for vm in vm_details if vm.get('status', {}).get('resources', {}).get('guest_tools') is not None]
-            key_string = "nutanix_count_ngt_installed"
-            self.__dict__[key_string].labels(prism_central=prism_central_hostname).set(len([ngt_vm for ngt_vm in ngt_vms_list if ngt_vm['status']['resources']['guest_tools']['nutanix_guest_tools']['ngt_state'] == "INSTALLED"]))
-            key_string = "nutanix_count_ngt_enabled"
-            self.__dict__[key_string].labels(prism_central=prism_central_hostname).set(len([ngt_vm for ngt_vm in ngt_vms_list if ngt_vm['status']['resources']['guest_tools']['nutanix_guest_tools']['is_reachable'] is True]))
-
-        if self.ncm_ssp_metrics:
-            #print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [INFO] Collecting NCM SSP metrics{PrintColors.RESET}")
-
-            if ipaddress.ip_address(self.prism):
-                try:
-                    ncm_ssp_hostname = socket.gethostbyaddr(self.prism)[0]
-                except:
-                    ncm_ssp_hostname = self.prism
-            else:
-                ncm_ssp_hostname = self.prism
-
-            print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [INFO] Collecting NCM SSP apps metrics{PrintColors.RESET}")
-            ncm_applications = get_total_entities(
-                api_server=self.prism,
-                username=self.user,
-                password=self.pwd,
-                entity_type='app',
-                entity_api_root='apps',
-                fiql_filter="(name!=Infrastructure;name!=Self%20Service);_state==running,_state==deleting,_state==error,_state==provisioning",
-                secure=self.prism_secure
-            )
-
-            ncm_applications_running = get_total_entities(
-                api_server=self.prism,
-                username=self.user,
-                password=self.pwd,
-                entity_type='app',
-                entity_api_root='apps',
-                fiql_filter="_state==running;(name!=Infrastructure;name!=Self%20Service)",
-                secure=self.prism_secure
-            )
-
-            ncm_applications_provisioning = get_total_entities(
-                api_server=self.prism,
-                username=self.user,
-                password=self.pwd,
-                entity_type='app',
-                entity_api_root='apps',
-                fiql_filter="_state==provisioning;(name!=Infrastructure;name!=Self%20Service)",
-                secure=self.prism_secure
-            )
-
-            ncm_applications_error = get_total_entities(
-                api_server=self.prism,
-                username=self.user,
-                password=self.pwd,
-                entity_type='app',
-                entity_api_root='apps',
-                fiql_filter="_state==error;(name!=Infrastructure;name!=Self%20Service)",
-                secure=self.prism_secure
-            )
-
-            ncm_applications_deleting = get_total_entities(
-                api_server=self.prism,
-                username=self.user,
-                password=self.pwd,
-                entity_type='app',
-                entity_api_root='apps',
-                fiql_filter="_state==deleting;(name!=Infrastructure;name!=Self%20Service)",
-                secure=self.prism_secure
-            )
-
-            print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [INFO] Collecting NCM SSP projects metrics{PrintColors.RESET}")
-            ncm_projects_count = get_total_entities(
-                api_server=self.prism,
-                username=self.user,
-                password=self.pwd,
-                entity_type='project',
-                entity_api_root='projects',
-                secure=self.prism_secure
-            )
-            print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [INFO] Collecting NCM SSP marketplace metrics{PrintColors.RESET}")
-            ncm_marketplace_items_count = get_total_entities(
-                api_server=self.prism,
-                username=self.user,
-                password=self.pwd,
-                entity_type='marketplace_item',
-                entity_api_root='marketplace_items',
-                secure=self.prism_secure
-            )
-            print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [INFO] Collecting NCM SSP blueprints metrics{PrintColors.RESET}")
-            ncm_blueprints_count = get_total_entities(
-                api_server=self.prism,
-                username=self.user,
-                password=self.pwd,
-                entity_type='blueprint',
-                entity_api_root='blueprints',
-                secure=self.prism_secure
-            )
-            print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [INFO] Collecting NCM SSP runbooks metrics{PrintColors.RESET}")
-            ncm_runbooks_count = get_total_entities(
-                api_server=self.prism,
-                username=self.user,
-                password=self.pwd,
-                entity_type='runbook',
-                entity_api_root='runbooks',
-                secure=self.prism_secure
-            )
-
-            key_string = "nutanix_ncm_count_applications"
-            self.__dict__[key_string].labels(ncm_ssp=ncm_ssp_hostname).set(ncm_applications)
-            key_string = "nutanix_ncm_count_applications_provisioning"
-            self.__dict__[key_string].labels(ncm_ssp=ncm_ssp_hostname).set(ncm_applications_provisioning)
-            key_string = "nutanix_ncm_count_applications_running"
-            self.__dict__[key_string].labels(ncm_ssp=ncm_ssp_hostname).set(ncm_applications_running)
-            key_string = "nutanix_ncm_count_applications_error"
-            self.__dict__[key_string].labels(ncm_ssp=ncm_ssp_hostname).set(ncm_applications_error)
-            key_string = "nutanix_ncm_count_applications_deleting"
-            self.__dict__[key_string].labels(ncm_ssp=ncm_ssp_hostname).set(ncm_applications_deleting)
-            key_string = "nutanix_ncm_count_blueprints"
-            self.__dict__[key_string].labels(ncm_ssp=ncm_ssp_hostname).set(ncm_blueprints_count)
-            key_string = "nutanix_ncm_count_runbooks"
-            self.__dict__[key_string].labels(ncm_ssp=ncm_ssp_hostname).set(ncm_runbooks_count)
-            key_string = "nutanix_ncm_count_marketplace_items"
-            self.__dict__[key_string].labels(ncm_ssp=ncm_ssp_hostname).set(ncm_marketplace_items_count)
-            key_string = "nutanix_ncm_count_projects"
-            self.__dict__[key_string].labels(ncm_ssp=ncm_ssp_hostname).set(ncm_projects_count)
-
-
-class NutanixMetricsRedfish:
-    """
-    Representation of Prometheus metrics and loop to fetch and transform
-    application metrics into Prometheus metrics.
-    """
-    def __init__(self,
-                 ipmi_config,
-                 polling_interval_seconds=30, api_requests_timeout_seconds=30, api_requests_retries=5, api_sleep_seconds_between_retries=15,
-                 ipmi_secure=False,ipmi_additional_metrics=False,
-                 ):
-        self.ipmi_config = ipmi_config
-        self.polling_interval_seconds = polling_interval_seconds
-        self.api_requests_timeout_seconds = api_requests_timeout_seconds
-        self.api_requests_retries = api_requests_retries
-        self.api_sleep_seconds_between_retries = api_sleep_seconds_between_retries
-        self.ipmi_secure = ipmi_secure
-        self.ipmi_additional_metrics = ipmi_additional_metrics
-
-        print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d_%H:%M:%S')} [INFO] Initializing metrics for IPMI adapters...{PrintColors.RESET}")
-        key_strings = [
-            "nutanix_power_consumption_power_consumed_watts",
-            "nutanix_power_consumption_min_consumed_watts",
-            "nutanix_power_consumption_max_consumed_watts",
-            "nutanix_power_consumption_average_consumed_watts",
-            "nutanix_thermal_cpu_temp_celsius",
-            "nutanix_thermal_pch_temp_celcius",
-            "nutanix_thermal_system_temp_celcius",
-            "nutanix_thermal_peripheral_temp_celcius",
-            "nutanix_thermal_inlet_temp_celcius",
-            "nutanix_power_state",
-            "nutanix_cpu_utilization",
-            "nutanix_memory_utilization"
-        ]
-        for key_string in key_strings:
-            setattr(self, key_string, Gauge(key_string, key_string, ['ipmi']))
-
-
-    def run_metrics_loop(self):
-        """Metrics fetching loop"""
-        print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [INFO] Starting metrics loop {PrintColors.RESET}")
-        while True:
-            self.fetch()
-            print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [INFO] Waiting for {self.polling_interval_seconds} seconds...{PrintColors.RESET}")
-            time.sleep(self.polling_interval_seconds)
-
-    def process_redfish_entity(self,ipmi_entity):
-        """Retrieves metrics from a single IPMI entity and updates Prometheus metrics."""
-        ipmi = ipmi_entity['ip']
-        ipmi_name = ipmi_entity['name']
-        ipmi_username = ipmi_entity['username']
-        ipmi_secret = ipmi_entity['password']
-
-        #* collection power consumption metrics
-        power_control = ipmi_get_powercontrol(ipmi,secret=ipmi_secret,username=ipmi_username,secure=self.ipmi_secure)
-        key_string = "nutanix_power_consumption_power_consumed_watts"
-        power = float(power_control.get('PowerConsumedWatts', 0))
-        self.__dict__[key_string].labels(ipmi=ipmi_name).set(power)
-
-        key_string = "nutanix_power_consumption_min_consumed_watts"
-        power = float(power_control.get('PowerMetrics', {}).get('MinConsumedWatts', 0))
-        self.__dict__[key_string].labels(ipmi=ipmi_name).set(power_control['PowerMetrics']['MinConsumedWatts'])
-
-        key_string = "nutanix_power_consumption_max_consumed_watts"
-        power = float(power_control.get('PowerMetrics', {}).get('MaxConsumedWatts', 0))
-        self.__dict__[key_string].labels(ipmi=ipmi_name).set(power_control['PowerMetrics']['MaxConsumedWatts'])
-
-        key_string = "nutanix_power_consumption_average_consumed_watts"
-        power = float(power_control.get('PowerMetrics', {}).get('AverageConsumedWatts', 0))
-        self.__dict__[key_string].labels(ipmi=ipmi_name).set(power_control['PowerMetrics']['AverageConsumedWatts'])
-
-        #* collection thermal metrics
-        thermal = ipmi_get_thermal(ipmi,secret=ipmi_secret,username=ipmi_username,secure=self.ipmi_secure)
-        cpu_temps = []
-        for temperature in thermal:
-            #print(f"{ipmi_entity['name']}: {type(temperature['Name'])}: {type(temperature['ReadingCelsius'])}")
-            if temperature['ReadingCelsius'] is None:
-                temp = 0
-            else:
-                try:
-                    temp = float(temperature.get('ReadingCelsius', 0))
-                except TypeError as e:
-                    print(f"{PrintColors.WARNING}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [WARNING] TypeError: {e} for {ipmi_entity['name']} when retrieving {temperature['ReadingCelsius']} for {temperature['Name']}. Setting value to 0. {PrintColors.RESET}")
-                    temp = 0
-            if re.match(r"CPU\d+ Temp", temperature['Name']):
-                cpu_temps.append(temp)
-            elif temperature['Name'] == 'PCH Temp':
-                key_string = "nutanix_thermal_pch_temp_celcius"
-                self.__dict__[key_string].labels(ipmi=ipmi_name).set(temp)
-            elif temperature['Name'] == 'System Temp':
-                key_string = "nutanix_thermal_system_temp_celcius"
-                self.__dict__[key_string].labels(ipmi=ipmi_name).set(temp)
-            elif temperature['Name'] == 'Peripheral Temp':
-                key_string = "nutanix_thermal_peripheral_temp_celcius"
-                self.__dict__[key_string].labels(ipmi=ipmi_name).set(temp)
-            elif temperature['Name'] == 'Inlet Temp':
-                key_string = "nutanix_thermal_inlet_temp_celcius"
-                self.__dict__[key_string].labels(ipmi=ipmi_name).set(temp)
-        if cpu_temps:
-            cpu_temp = sum(cpu_temps) / len(cpu_temps)
-            key_string = "nutanix_thermal_cpu_temp_celsius"
-            self.__dict__[key_string].labels(ipmi=ipmi_name).set(cpu_temp)
-
-        # * collection additional metrics based on env variable
-        if self.ipmi_additional_metrics is not False:
-            #* collection power state
-            power_state_str = ipmi_get_power_state(ipmi, secret=ipmi_secret, username=ipmi_username, secure=self.ipmi_secure)
-            key_string = "nutanix_power_state"
-            power_state = 1 if power_state_str == 'On' else 0
-            self.__dict__[key_string].labels(ipmi=ipmi_name).set(power_state)
-
-            #* collection cpu util
-            cpu_util = ipmi_get_cpu_utilization(ipmi, secret=ipmi_secret, username=ipmi_username, secure=self.ipmi_secure)
-            key_string = "nutanix_cpu_utilization"
-            self.__dict__[key_string].labels(ipmi=ipmi_name).set(cpu_util)
-
-            #* collection mem util
-            mem_util = ipmi_get_memory_utilization(ipmi, secret=ipmi_secret, username=ipmi_username, secure=self.ipmi_secure)
-            key_string = "nutanix_memory_utilization"
-            self.__dict__[key_string].labels(ipmi=ipmi_name).set(mem_util)
-
-    def fetch(self):
-        """
-        Get metrics from application and refresh Prometheus metrics with
-        new values.
-        """
-
-        print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [INFO] Collecting IPMI metrics{PrintColors.RESET}")
-        with ThreadPoolExecutor(max_workers=10) as executor:
-            futures = [executor.submit(self.process_redfish_entity,ipmi_entity=ipmi_entity) for ipmi_entity in self.ipmi_config]
-        for future in as_completed(futures):
-            try:
-                future.result()
-            except Exception as e:
-                print(f"{PrintColors.WARNING}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [WARNING] A task failed with error: {e} {type(e)} {PrintColors.RESET}")
-                traceback.print_exc()
-#endregion #*CLASS
-
 
 #region #*FUNCTIONS
 def process_request(url, method, user, password, headers, api_requests_timeout_seconds=30, api_requests_retries=5, api_sleep_seconds_between_retries=15, payload=None, secure=False):
@@ -4490,31 +3754,7 @@ def main():
     
     print(f"{PrintColors.OK}{'='*80}{PrintColors.RESET}")
 
-    if operations_mode_env == 'legacy':
-        print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [INFO] Initializing metrics class...{PrintColors.RESET}")
-        nutanix_metrics = NutanixMetricsLegacy(
-            app_port=app_port,
-            polling_interval_seconds=polling_interval_seconds,
-            api_requests_timeout_seconds=api_requests_timeout_seconds,
-            api_requests_retries=api_requests_retries,
-            api_sleep_seconds_between_retries=api_sleep_seconds_between_retries,
-            prism=os.getenv('PRISM'),
-            user = os.getenv('PRISM_USERNAME'),
-            pwd = os.getenv('PRISM_SECRET'),
-            prism_secure=prism_secure,
-            ipmi_username = os.getenv('IPMI_USERNAME', default='ADMIN'),
-            ipmi_secret = os.getenv('IPMI_SECRET', default=None),
-            vm_list=os.getenv('VM_LIST'),
-            cluster_metrics=cluster_metrics,
-            storage_containers_metrics=storage_containers_metrics,
-            ipmi_metrics=ipmi_metrics,
-            prism_central_metrics=prism_central_metrics,
-            ncm_ssp_metrics=ncm_ssp_metrics
-        )
-        print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [INFO] Starting http server on port {exporter_port}{PrintColors.RESET}")
-        start_http_server(exporter_port)
-        nutanix_metrics.run_metrics_loop()
-    elif operations_mode_env == 'v4':
+    if operations_mode_env == 'v4':
         print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [INFO] Initializing metrics class...{PrintColors.RESET}")
         nutanix_metrics = NutanixMetrics(
             app_port=app_port,
@@ -4530,20 +3770,6 @@ def main():
             files_metrics=files_metrics, object_metrics=object_metrics, volumes_metrics=volumes_metrics, ncm_ssp_metrics=ncm_ssp_metrics, prism_central_metrics=prism_central_metrics, microseg_metrics=microseg_metrics,
             vm_list=os.getenv('VM_LIST'),
             show_stats_only=show_stats_only
-        )
-        print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [INFO] Starting http server on port {exporter_port}{PrintColors.RESET}")
-        start_http_server(exporter_port)
-        nutanix_metrics.run_metrics_loop()
-    elif operations_mode_env == 'redfish':
-        print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [INFO] Initializing metrics class...{PrintColors.RESET}")
-        nutanix_metrics = NutanixMetricsRedfish(
-            polling_interval_seconds=polling_interval_seconds,
-            api_requests_timeout_seconds=api_requests_timeout_seconds,
-            api_requests_retries=api_requests_retries,
-            api_sleep_seconds_between_retries=api_sleep_seconds_between_retries,
-            ipmi_secure=ipmi_secure,
-            ipmi_config=ipmi_config,
-            ipmi_additional_metrics=ipmi_additional_metrics,
         )
         print(f"{PrintColors.OK}{(datetime.now()).strftime('%Y-%m-%d %H:%M:%S')} [INFO] Starting http server on port {exporter_port}{PrintColors.RESET}")
         start_http_server(exporter_port)
